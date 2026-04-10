@@ -85,7 +85,8 @@ HTML-файлы лежат в `/usr/share/nginx/html`. Сами страницы
 
 1. Создайте `.env` на основе `.env.example`.
 2. Заполните домен, HTTPS-порты, backend-адреса и пути к сертификатам.
-3. Запустите контейнер:
+3. Задайте path prefixes для панели и подписок.
+4. Запустите контейнер:
 
 ```bash
 docker compose up -d
@@ -104,12 +105,26 @@ docker compose up -d
 - `SITE_DOMAIN`
 - `PANEL_HTTPS_PORT`
 - `SUBS_HTTPS_PORT`
+- `PANEL_PATH_PREFIX`
+- `SUBS_PATH_PREFIX`
 - `PANEL_BACKEND_HOST`
 - `PANEL_BACKEND_PORT`
 - `SUBS_BACKEND_HOST`
 - `SUBS_BACKEND_PORT`
 - `SSL_CERT_FULLCHAIN_PATH`
 - `SSL_CERT_PRIVKEY_PATH`
+
+Для путей используйте формат:
+
+- с ведущим `/`
+- без завершающего `/`
+
+Пример:
+
+```env
+PANEL_PATH_PREFIX=/super_duper_proxy_panel
+SUBS_PATH_PREFIX=/comrades
+```
 
 ## Project Structure
 

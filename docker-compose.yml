@@ -9,6 +9,8 @@ services:
 
       PANEL_HTTPS_PORT: "${PANEL_HTTPS_PORT}"
       SUBS_HTTPS_PORT: "${SUBS_HTTPS_PORT}"
+      PANEL_PATH_PREFIX: "${PANEL_PATH_PREFIX}"
+      SUBS_PATH_PREFIX: "${SUBS_PATH_PREFIX}"
 
       PANEL_BACKEND_HOST: "${PANEL_BACKEND_HOST}"
       PANEL_BACKEND_PORT: "${PANEL_BACKEND_PORT}"
@@ -19,6 +21,7 @@ services:
       /bin/sh -c "envsubst
       '$$SITE_DOMAIN
       $$PANEL_HTTPS_PORT $$SUBS_HTTPS_PORT
+      $$PANEL_PATH_PREFIX $$SUBS_PATH_PREFIX
       $$PANEL_BACKEND_HOST $$PANEL_BACKEND_PORT
       $$SUBS_BACKEND_HOST $$SUBS_BACKEND_PORT'
       < /etc/nginx/templates/nginx.conf.template
