@@ -19,7 +19,7 @@
 
 Что есть в проекте:
 
-- `docker-compose.yml` для запуска nginx в `host` network
+- `docker-compose.yml` для запуска nginx в обычном bridge-режиме с публикацией портов
 - `nginx.conf` как шаблон с `envsubst`
 - отдельные HTML-страницы для `400`, `401`, `403`, `404`, `405`, `500`, `502`, `503`, `504`
 - общий `html/error-pages.css` с легкой фоновой анимацией
@@ -86,7 +86,8 @@ HTML-файлы лежат в `/usr/share/nginx/html`. Сами страницы
 1. Создайте `.env` на основе `.env.example`.
 2. Заполните домен, HTTPS-порты, backend-адреса и пути к сертификатам.
 3. Задайте path prefixes для панели и подписок.
-4. Запустите контейнер:
+4. Если backend-сервисы работают на хост-машине, используйте `host.docker.internal` как значение `PANEL_BACKEND_HOST` и `SUBS_BACKEND_HOST`.
+5. Запустите контейнер:
 
 ```bash
 docker compose up -d
@@ -109,8 +110,10 @@ docker compose up -d
 - `SUBS_PATH_PREFIX`
 - `PANEL_BACKEND_HOST`
 - `PANEL_BACKEND_PORT`
+- `PANEL_BACKEND_SCHEME`
 - `SUBS_BACKEND_HOST`
 - `SUBS_BACKEND_PORT`
+- `SUBS_BACKEND_SCHEME`
 - `SSL_CERT_FULLCHAIN_PATH`
 - `SSL_CERT_PRIVKEY_PATH`
 
@@ -124,6 +127,10 @@ docker compose up -d
 ```env
 PANEL_PATH_PREFIX=/super_duper_proxy_panel
 SUBS_PATH_PREFIX=/comrades
+PANEL_BACKEND_HOST=host.docker.internal
+SUBS_BACKEND_HOST=host.docker.internal
+PANEL_BACKEND_SCHEME=http
+SUBS_BACKEND_SCHEME=http
 ```
 
 ## Project Structure

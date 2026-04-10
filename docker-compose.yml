@@ -3,7 +3,6 @@ services:
     image: nginx:latest
     container_name: 3xui-fallback
     restart: unless-stopped
-    network_mode: host
     environment:
       SITE_DOMAIN: "${SITE_DOMAIN}"
 
@@ -12,9 +11,11 @@ services:
       PANEL_PATH_PREFIX: "${PANEL_PATH_PREFIX}"
       SUBS_PATH_PREFIX: "${SUBS_PATH_PREFIX}"
 
+      PANEL_BACKEND_SCHEME: "${PANEL_BACKEND_SCHEME}"
       PANEL_BACKEND_HOST: "${PANEL_BACKEND_HOST}"
       PANEL_BACKEND_PORT: "${PANEL_BACKEND_PORT}"
 
+      SUBS_BACKEND_SCHEME: "${SUBS_BACKEND_SCHEME}"
       SUBS_BACKEND_HOST: "${SUBS_BACKEND_HOST}"
       SUBS_BACKEND_PORT: "${SUBS_BACKEND_PORT}"
     command: >
@@ -22,12 +23,19 @@ services:
       '$$SITE_DOMAIN
       $$PANEL_HTTPS_PORT $$SUBS_HTTPS_PORT
       $$PANEL_PATH_PREFIX $$SUBS_PATH_PREFIX
+      $$PANEL_BACKEND_SCHEME
       $$PANEL_BACKEND_HOST $$PANEL_BACKEND_PORT
+      $$SUBS_BACKEND_SCHEME
       $$SUBS_BACKEND_HOST $$SUBS_BACKEND_PORT'
       < /etc/nginx/templates/nginx.conf.template
       > /etc/nginx/nginx.conf
       && nginx -t
       && nginx -g 'daemon off;'"
+    ports:
+      - "${PANEL_HTTPS_PORT}:${PANEL_HTTPS_PORT}"
+      - "${SUBS_HTTPS_PORT}:${SUBS_HTTPS_PORT}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./nginx.conf:/etc/nginx/templates/nginx.conf.template:ro
       - ./html:/usr/share/nginx/html:ro
