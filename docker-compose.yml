@@ -1,0 +1,32 @@
+services:
+  nginx:
+    image: nginx:latest
+    container_name: frontend_nginx
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      SITE_DOMAIN: "${SITE_DOMAIN}"
+
+      PANEL_HTTPS_PORT: "${PANEL_HTTPS_PORT}"
+      SUBS_HTTPS_PORT: "${SUBS_HTTPS_PORT}"
+
+      PANEL_BACKEND_HOST: "${PANEL_BACKEND_HOST}"
+      PANEL_BACKEND_PORT: "${PANEL_BACKEND_PORT}"
+
+      SUBS_BACKEND_HOST: "${SUBS_BACKEND_HOST}"
+      SUBS_BACKEND_PORT: "${SUBS_BACKEND_PORT}"
+    command: >
+      /bin/sh -c "envsubst
+      '$$SITE_DOMAIN
+      $$PANEL_HTTPS_PORT $$SUBS_HTTPS_PORT
+      $$PANEL_BACKEND_HOST $$PANEL_BACKEND_PORT
+      $$SUBS_BACKEND_HOST $$SUBS_BACKEND_PORT'
+      < /etc/nginx/templates/nginx.conf.template
+      > /etc/nginx/nginx.conf
+      && nginx -t
+      && nginx -g 'daemon off;'"
+    volumes:
+      - ./nginx.conf:/etc/nginx/templates/nginx.conf.template:ro
+      - ./html:/usr/share/nginx/html:ro
+      - ${SSL_CERT_FULLCHAIN_PATH}:/etc/nginx/certs/fullchain.pem:ro
+      - ${SSL_CERT_PRIVKEY_PATH}:/etc/nginx/certs/privkey.pem:ro

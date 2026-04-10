@@ -1,0 +1,332 @@
+:root {
+  color-scheme: dark;
+  --bg-base: #07111f;
+  --bg-top: #0d1b31;
+  --panel: rgba(10, 18, 34, 0.76);
+  --panel-border: rgba(148, 163, 184, 0.16);
+  --text-main: #f8fafc;
+  --text-soft: #bfd0e4;
+  --accent: #38bdf8;
+  --accent-soft: rgba(56, 189, 248, 0.24);
+  --blob-a: rgba(56, 189, 248, 0.34);
+  --blob-b: rgba(45, 212, 191, 0.24);
+  --blob-c: rgba(99, 102, 241, 0.18);
+  --shadow: 0 24px 80px rgba(2, 6, 23, 0.46);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  color: var(--text-main);
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.10), transparent 34%),
+    linear-gradient(160deg, var(--bg-top), var(--bg-base) 58%, #040913 100%);
+  display: grid;
+  place-items: center;
+}
+
+body.theme-server {
+  --bg-base: #13090f;
+  --bg-top: #25101a;
+  --panel: rgba(26, 10, 18, 0.78);
+  --panel-border: rgba(251, 146, 60, 0.18);
+  --text-main: #fff7ed;
+  --text-soft: #fed7aa;
+  --accent: #fb7185;
+  --accent-soft: rgba(251, 113, 133, 0.18);
+  --blob-a: rgba(251, 113, 133, 0.28);
+  --blob-b: rgba(249, 115, 22, 0.26);
+  --blob-c: rgba(251, 191, 36, 0.18);
+  --shadow: 0 24px 80px rgba(15, 3, 7, 0.5);
+  background:
+    radial-gradient(circle at top, rgba(251, 113, 133, 0.08), transparent 32%),
+    linear-gradient(155deg, var(--bg-top), var(--bg-base) 60%, #090306 100%);
+}
+
+.scene {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.82;
+}
+
+.theme-client .blob {
+  filter: blur(14px);
+  animation: drift-client 18s ease-in-out infinite alternate;
+}
+
+.theme-server .blob {
+  filter: blur(16px);
+  animation: drift-server 17s ease-in-out infinite alternate;
+}
+
+.blob-a {
+  width: 32rem;
+  height: 32rem;
+  top: -8rem;
+  left: -6rem;
+  background: var(--blob-a);
+  animation-duration: 16s;
+}
+
+.theme-server .blob-a {
+  width: 30rem;
+  height: 30rem;
+  top: -6rem;
+  left: -5rem;
+  animation-duration: 15s;
+}
+
+.blob-b {
+  width: 26rem;
+  height: 26rem;
+  right: -4rem;
+  bottom: -7rem;
+  background: var(--blob-b);
+  animation-duration: 20s;
+  animation-delay: -6s;
+}
+
+.theme-server .blob-b {
+  width: 24rem;
+  height: 24rem;
+  right: -3rem;
+  bottom: -6rem;
+  animation-duration: 19s;
+  animation-delay: -5s;
+}
+
+.blob-c {
+  width: 18rem;
+  height: 18rem;
+  top: 22%;
+  right: 18%;
+  background: var(--blob-c);
+  animation-duration: 22s;
+  animation-delay: -10s;
+}
+
+.theme-server .blob-c {
+  width: 16rem;
+  height: 16rem;
+  top: 20%;
+  right: 22%;
+  animation-duration: 23s;
+  animation-delay: -9s;
+}
+
+.grid {
+  position: absolute;
+  inset: -20%;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+  background-size: 4.5rem 4.5rem;
+  mask-image: radial-gradient(circle at center, black 36%, transparent 82%);
+  animation: grid-shift 28s linear infinite;
+  opacity: 0.6;
+}
+
+.noise {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.02) 0,
+      rgba(255, 255, 255, 0.02) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  opacity: 0.35;
+  mix-blend-mode: soft-light;
+  animation: flicker 8s steps(2, end) infinite;
+}
+
+.card {
+  position: relative;
+  width: min(100% - 2rem, 44rem);
+  padding: 2.75rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 1.5rem;
+  background: var(--panel);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow);
+  z-index: 1;
+}
+
+.theme-server .card {
+  backdrop-filter: blur(18px);
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.theme-client .eyebrow {
+  color: #d9f6ff;
+}
+
+.theme-server .eyebrow {
+  color: #ffe4e6;
+}
+
+.eyebrow::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 18px var(--accent);
+}
+
+.theme-client .eyebrow::before {
+  animation: pulse-client 2.8s ease-in-out infinite;
+}
+
+.theme-server .eyebrow::before {
+  animation: pulse-server 2.6s ease-in-out infinite;
+}
+
+h1 {
+  margin: 1.35rem 0 0.55rem;
+  font-size: clamp(2.2rem, 6vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  margin: 0 0 0.95rem;
+  font-size: 1.08rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+p {
+  margin: 0;
+  max-width: 34rem;
+  font-size: 1.02rem;
+  line-height: 1.7;
+  color: var(--text-soft);
+}
+
+.status {
+  margin-top: 1.6rem;
+  font-size: 0.95rem;
+}
+
+.theme-client .status {
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.theme-server .status {
+  color: rgba(255, 237, 213, 0.72);
+}
+
+@keyframes drift-client {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(2rem, -1.5rem, 0) scale(1.12);
+  }
+}
+
+@keyframes drift-server {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(1.8rem, -1.3rem, 0) scale(1.11);
+  }
+}
+
+@keyframes grid-shift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-4.5rem, -4.5rem, 0);
+  }
+}
+
+@keyframes pulse-client {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.76;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-server {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.74;
+  }
+  50% {
+    transform: scale(1.16);
+    opacity: 1;
+  }
+}
+
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 0.24;
+  }
+  50% {
+    opacity: 0.38;
+  }
+}
+
+@media (max-width: 640px) {
+  .card {
+    padding: 2rem 1.35rem;
+    border-radius: 1.2rem;
+  }
+
+  .subtitle,
+  p {
+    font-size: 0.96rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blob,
+  .grid,
+  .noise,
+  .eyebrow::before {
+    animation: none;
+  }
+}

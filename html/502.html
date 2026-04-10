@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>502 Bad Gateway</title>
+  <link rel="stylesheet" href="./error-pages.css" />
+</head>
+<body class="theme-server">
+  <div class="scene" aria-hidden="true">
+    <div class="blob blob-a"></div>
+    <div class="blob blob-b"></div>
+    <div class="blob blob-c"></div>
+    <div class="noise"></div>
+  </div>
+
+  <main class="card">
+    <div class="eyebrow">Server Error</div>
+    <h1>502</h1>
+    <p class="subtitle">Плохой ответ от upstream</p>
+    <p>Nginx получил некорректный или неполный ответ от backend-сервиса, к которому проксирует запрос.</p>
+    <div class="status">Проверьте доступность upstream и корректность ответа backend.</div>
+  </main>
+</body>
+</html>

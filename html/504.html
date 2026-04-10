@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>504 Gateway Timeout</title>
+  <link rel="stylesheet" href="./error-pages.css" />
+</head>
+<body class="theme-server">
+  <div class="scene" aria-hidden="true">
+    <div class="blob blob-a"></div>
+    <div class="blob blob-b"></div>
+    <div class="blob blob-c"></div>
+    <div class="noise"></div>
+  </div>
+
+  <main class="card">
+    <div class="eyebrow">Server Error</div>
+    <h1>504</h1>
+    <p class="subtitle">Таймаут upstream-сервиса</p>
+    <p>Nginx дождался ответа от backend, но тот не успел ответить в допустимое время.</p>
+    <div class="status">Проверьте задержки backend-сервиса и сетевую связность между сервисами.</div>
+  </main>
+</body>
+</html>
