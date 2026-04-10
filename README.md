@@ -141,6 +141,8 @@ PANEL_BACKEND_SCHEME=https
 
 Иначе nginx будет ходить к backend по `http`, а backend начнет отвечать `307 Temporary Redirect` на тот же внешний URL панели.
 
+Для страницы подписок location должен проксировать не только `/SUBS_PATH_PREFIX/<subid>`, но и вложенные пути вида `/SUBS_PATH_PREFIX/<subid>/...`, потому что `3x-ui` подгружает ассеты страницы относительно динамического `subid`. Поэтому в шаблоне nginx используется префиксный `location ^~ ${SUBS_PATH_PREFIX}/`.
+
 ## Project Structure
 
 ```text
