@@ -1,7 +1,7 @@
 services:
   nginx:
     image: nginx:latest
-    container_name: frontend_nginx
+    container_name: 3xui-fallback
     restart: unless-stopped
     network_mode: host
     environment:
