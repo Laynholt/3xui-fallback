@@ -133,6 +133,14 @@ PANEL_BACKEND_SCHEME=http
 SUBS_BACKEND_SCHEME=http
 ```
 
+Если panel backend на `127.0.0.1:19000` сам поднимает TLS и отвечает только по `https`, укажите:
+
+```env
+PANEL_BACKEND_SCHEME=https
+```
+
+Иначе nginx будет ходить к backend по `http`, а backend начнет отвечать `307 Temporary Redirect` на тот же внешний URL панели.
+
 ## Project Structure
 
 ```text
