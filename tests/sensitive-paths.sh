@@ -84,16 +84,18 @@ docker run \
   -e "PANEL_BACKEND_HOST=127.0.0.1" \
   -e "PANEL_BACKEND_PORT=$UPSTREAM_PORT" \
   -e "PANEL_BACKEND_TLS_NAME=127.0.0.1" \
+  -e "PANEL_BACKEND_SSL_VERIFY=off" \
   -e "SUBS_BACKEND_SCHEME=http" \
   -e "SUBS_BACKEND_HOST=127.0.0.1" \
   -e "SUBS_BACKEND_PORT=$UPSTREAM_PORT" \
   -e "SUBS_BACKEND_TLS_NAME=127.0.0.1" \
+  -e "SUBS_BACKEND_SSL_VERIFY=off" \
   -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
   -v "$ROOT_DIR/html:/usr/share/nginx/html:ro" \
   -v "$TMP_DIR/fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
   -v "$TMP_DIR/privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
   "$NGINX_IMAGE" \
-  /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
+  /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
   >/dev/null
 
 nginx_ready=0
