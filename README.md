@@ -85,9 +85,10 @@ HTML-файлы лежат в `/usr/share/nginx/html`. Сами страницы
 
 1. Создайте `.env` на основе `.env.example`.
 2. Заполните домен, HTTPS-порты, backend-адреса и пути к сертификатам.
-3. Задайте path prefixes для панели и подписок.
-4. Если backend-сервисы слушают только `127.0.0.1` на хосте, оставьте `PANEL_BACKEND_HOST=127.0.0.1` и `SUBS_BACKEND_HOST=127.0.0.1`.
-5. Запустите контейнер:
+3. Задайте `PANEL_ALLOWED_CIDR` для сети, из которой можно открывать панель.
+4. Задайте path prefixes для панели и подписок.
+5. Если backend-сервисы слушают только `127.0.0.1` на хосте, оставьте `PANEL_BACKEND_HOST=127.0.0.1` и `SUBS_BACKEND_HOST=127.0.0.1`.
+6. Запустите контейнер:
 
 ```bash
 docker compose up -d
@@ -106,6 +107,7 @@ docker compose up -d
 - `SITE_DOMAIN`
 - `PANEL_HTTPS_PORT`
 - `SUBS_HTTPS_PORT`
+- `PANEL_ALLOWED_CIDR`
 - `PANEL_PATH_PREFIX`
 - `SUBS_PATH_PREFIX`
 - `PANEL_BACKEND_HOST`
@@ -127,11 +129,14 @@ docker compose up -d
 ```env
 PANEL_PATH_PREFIX=/super_duper_proxy_panel
 SUBS_PATH_PREFIX=/comrades
+PANEL_ALLOWED_CIDR=127.0.0.1/32
 PANEL_BACKEND_HOST=127.0.0.1
 SUBS_BACKEND_HOST=127.0.0.1
 PANEL_BACKEND_SCHEME=http
 SUBS_BACKEND_SCHEME=http
 ```
+
+`PANEL_ALLOWED_CIDR` применяется только к panel proxy. Безопасный пример `127.0.0.1/32` оставляет панель доступной только локально. Для админской сети укажите ее CIDR, например `203.0.113.0/24`. Значение `all` открывает панель публично и должно использоваться только если внешний firewall, VPN или другой access gate уже enforced вне этого контейнера.
 
 Если panel backend на `127.0.0.1:19000` сам поднимает TLS и отвечает только по `https`, укажите:
 
@@ -141,7 +146,9 @@ PANEL_BACKEND_SCHEME=https
 
 Иначе nginx будет ходить к backend по `http`, а backend начнет отвечать `307 Temporary Redirect` на тот же внешний URL панели.
 
-Для страницы подписок location должен проксировать не только `/SUBS_PATH_PREFIX/<subid>`, но и вложенные пути вида `/SUBS_PATH_PREFIX/<subid>/...`, потому что `3x-ui` подгружает ассеты страницы относительно динамического `subid`. Поэтому в шаблоне nginx используется префиксный `location ^~ ${SUBS_PATH_PREFIX}/`.
+Для HTTPS upstream nginx проверяет сертификат backend через CA bundle контейнера и использует `PANEL_BACKEND_HOST` / `SUBS_BACKEND_HOST` как TLS identity. Поэтому host должен совпадать с SAN сертификата, а self-signed/private CA нужно доверить контейнеру. Для локального backend на loopback без валидного сертификата оставляйте `PANEL_BACKEND_SCHEME=http` / `SUBS_BACKEND_SCHEME=http`.
+
+Для страницы подписок location должен проксировать не только `/SUBS_PATH_PREFIX/<subid>`, но и вложенные пути вида `/SUBS_PATH_PREFIX/<subid>/...`, потому что `3x-ui` подгружает ассеты страницы относительно динамического `subid`. Поэтому в шаблоне nginx используется префиксный `location ${SUBS_PATH_PREFIX}/`.
 
 Некорректные `subid`, на которые backend отвечает `400` или `404`, тоже подхватываются `error_page` и показывают кастомную страницу вместо сырого `Error!`.
 
