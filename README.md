@@ -114,10 +114,12 @@ docker compose up -d
 - `PANEL_BACKEND_PORT`
 - `PANEL_BACKEND_SCHEME`
 - `PANEL_BACKEND_TLS_NAME`
+- `PANEL_BACKEND_SSL_VERIFY`
 - `SUBS_BACKEND_HOST`
 - `SUBS_BACKEND_PORT`
 - `SUBS_BACKEND_SCHEME`
 - `SUBS_BACKEND_TLS_NAME`
+- `SUBS_BACKEND_SSL_VERIFY`
 - `SSL_CERT_FULLCHAIN_PATH`
 - `SSL_CERT_PRIVKEY_PATH`
 
@@ -138,6 +140,8 @@ PANEL_BACKEND_SCHEME=http
 SUBS_BACKEND_SCHEME=http
 PANEL_BACKEND_TLS_NAME=127.0.0.1
 SUBS_BACKEND_TLS_NAME=127.0.0.1
+PANEL_BACKEND_SSL_VERIFY=off
+SUBS_BACKEND_SSL_VERIFY=off
 ```
 
 `PANEL_ALLOWED_CIDR` применяется только к panel proxy. Безопасный пример `127.0.0.1/32` оставляет панель доступной только локально. Для админской сети укажите ее CIDR, например `203.0.113.0/24`. Значение `all` открывает панель публично и должно использоваться только если внешний firewall, VPN или другой access gate уже enforced вне этого контейнера.
@@ -150,7 +154,7 @@ PANEL_BACKEND_SCHEME=https
 
 Иначе nginx будет ходить к backend по `http`, а backend начнет отвечать `307 Temporary Redirect` на тот же внешний URL панели.
 
-Для HTTPS upstream nginx проверяет сертификат backend через CA bundle контейнера и использует `PANEL_BACKEND_TLS_NAME` / `SUBS_BACKEND_TLS_NAME` как TLS identity. Это позволяет подключаться к backend по `127.0.0.1`, но проверять сертификат по доменному имени из SAN. Например, если backend доступен на `127.0.0.1:19000`, а сертификат выпущен на `example.com`, задайте `PANEL_BACKEND_HOST=127.0.0.1` и `PANEL_BACKEND_TLS_NAME=example.com`. Self-signed/private CA нужно доверить контейнеру. Для локального backend на loopback без валидного сертификата оставляйте `PANEL_BACKEND_SCHEME=http` / `SUBS_BACKEND_SCHEME=http`.
+Для HTTPS upstream nginx может проверять сертификат backend через CA bundle контейнера и использует `PANEL_BACKEND_TLS_NAME` / `SUBS_BACKEND_TLS_NAME` как TLS identity. Это позволяет подключаться к backend по `127.0.0.1`, но проверять сертификат по доменному имени из SAN. Например, если backend доступен на `127.0.0.1:19000`, а сертификат выпущен на `example.com`, задайте `PANEL_BACKEND_HOST=127.0.0.1`, `PANEL_BACKEND_TLS_NAME=example.com` и `PANEL_BACKEND_SSL_VERIFY=on`. Self-signed/private CA нужно доверить контейнеру. Для локального HTTPS backend с self-signed сертификатом можно оставить `PANEL_BACKEND_SSL_VERIFY=off`; для локального backend без TLS оставляйте `PANEL_BACKEND_SCHEME=http` / `SUBS_BACKEND_SCHEME=http`.
 
 Для страницы подписок location должен проксировать не только `/SUBS_PATH_PREFIX/<subid>`, но и вложенные пути вида `/SUBS_PATH_PREFIX/<subid>/...`, потому что `3x-ui` подгружает ассеты страницы относительно динамического `subid`. Поэтому в шаблоне nginx используется префиксный `location ${SUBS_PATH_PREFIX}/`.
 

@@ -56,13 +56,15 @@ render_config() {
     -e "PANEL_BACKEND_HOST=panel-backend.test" \
     -e "PANEL_BACKEND_PORT=9443" \
     -e "PANEL_BACKEND_TLS_NAME=panel-backend.test" \
+    -e "PANEL_BACKEND_SSL_VERIFY=on" \
     -e "SUBS_BACKEND_SCHEME=https" \
     -e "SUBS_BACKEND_HOST=subs-backend.test" \
     -e "SUBS_BACKEND_PORT=9444" \
     -e "SUBS_BACKEND_TLS_NAME=subs-backend.test" \
+    -e "SUBS_BACKEND_SSL_VERIFY=on" \
     -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME' < /etc/nginx/templates/nginx.conf.template" \
+    /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template" \
     > "$TMP_DIR/rendered-nginx.conf"
 }
 
@@ -309,6 +311,7 @@ start_nginx() {
   local backend_scheme="$1"
   local backend_tls_name="${2:-127.0.0.1}"
   local trusted_ca="${3:-}"
+  local ssl_verify="${4:-on}"
   local ca_volume=()
 
   if [[ -n "$trusted_ca" ]]; then
@@ -331,17 +334,19 @@ start_nginx() {
     -e "PANEL_BACKEND_HOST=127.0.0.1" \
     -e "PANEL_BACKEND_PORT=$UPSTREAM_PORT" \
     -e "PANEL_BACKEND_TLS_NAME=$backend_tls_name" \
+    -e "PANEL_BACKEND_SSL_VERIFY=$ssl_verify" \
     -e "SUBS_BACKEND_SCHEME=$backend_scheme" \
     -e "SUBS_BACKEND_HOST=127.0.0.1" \
     -e "SUBS_BACKEND_PORT=$UPSTREAM_PORT" \
     -e "SUBS_BACKEND_TLS_NAME=$backend_tls_name" \
+    -e "SUBS_BACKEND_SSL_VERIFY=$ssl_verify" \
     -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
     -v "$ROOT_DIR/html:/usr/share/nginx/html:ro" \
     -v "$TMP_DIR/frontend-fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
     -v "$TMP_DIR/frontend-privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
     "${ca_volume[@]}" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
+    /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
     >/dev/null || {
       fail "nginx container failed to start"
       return 1
@@ -433,6 +438,19 @@ assert_untrusted_tls_upstream_blocked() {
   fi
 }
 
+assert_untrusted_tls_upstream_allowed_when_verify_off() {
+  local port="$1"
+  local path="$2"
+  local body="$TMP_DIR/body-tls-off-${port}-${path//\//_}"
+  local status
+
+  status="$(curl -ksS -H "Host: $SITE_DOMAIN" -o "$body" -w "%{http_code}" "https://127.0.0.1:$port$path")"
+  if [[ "$status" != "200" ]] || ! grep -q "UPSTREAM_TLS_CANARY" "$body"; then
+    fail "expected HTTPS proxying with verification off to work for port=$port path=$path status=$status"
+    cat "$body" >&2
+  fi
+}
+
 assert_https_proxy_still_works() {
   local port="$1"
   local path="$2"
@@ -468,6 +486,14 @@ start_tls_upstream
 if wait_for_upstream https && start_nginx https; then
   assert_untrusted_tls_upstream_blocked "$PANEL_HTTPS_PORT" "$PANEL_PATH_PREFIX/health"
   assert_untrusted_tls_upstream_blocked "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/health"
+fi
+stop_nginx
+stop_upstream
+
+start_tls_upstream
+if wait_for_upstream https && start_nginx https 127.0.0.1 "" off; then
+  assert_untrusted_tls_upstream_allowed_when_verify_off "$PANEL_HTTPS_PORT" "$PANEL_PATH_PREFIX/health"
+  assert_untrusted_tls_upstream_allowed_when_verify_off "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/health"
 fi
 stop_nginx
 stop_upstream
