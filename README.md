@@ -187,3 +187,7 @@ PANEL_BACKEND_SCHEME=https
     ├── 503.html
     └── 504.html
 ```
+
+## Dependency maintenance
+
+The Compose image and both regression tests use nginx 1.30.6 on Alpine 3.24, pinned by digest. Update all three references together after reviewing nginx advisories and rerunning the tests. For an existing installation, pull the new image before recreating the service: `docker compose pull && docker compose up -d`. Back up your configuration and retain the previous image for rollback.
