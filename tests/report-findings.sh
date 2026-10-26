@@ -3,7 +3,7 @@ set -u -o pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
-NGINX_IMAGE="${NGINX_IMAGE:-nginx:1.28.0-alpine@sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284}"
+NGINX_IMAGE="${NGINX_IMAGE:-nginx:1.30.6-alpine3.24-slim@sha256:d9322bba63c6cfc63dc9e86522fd4f95fd4d9020a02b5bced282bbf38b8c3960}"
 SITE_DOMAIN="${SITE_DOMAIN:-example.test}"
 ATTACKER_HOST="${ATTACKER_HOST:-attacker.example}"
 PANEL_ALLOWED_CIDR="${PANEL_ALLOWED_CIDR:-127.0.0.1/32}"
@@ -206,6 +206,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(b"UPSTREAM_TLS_CANARY=1\n")))
         self.end_headers()
         self.wfile.write(b"UPSTREAM_TLS_CANARY=1\n")
 
@@ -265,6 +266,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(b"UPSTREAM_TLS_CANARY=1\n")))
         self.end_headers()
         self.wfile.write(b"UPSTREAM_TLS_CANARY=1\n")
 
