@@ -178,28 +178,47 @@ if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
   [[ "$status" == 200 ]]
   status="$(curl -ksS -X SWATTERCANARY -H "Host: $SITE_DOMAIN" -o /dev/null -w '%{http_code}' "https://127.0.0.1:$PANEL_HTTPS_PORT/unknown")"
   [[ "$status" == 404 ]]
+  # Each POST marker is sent to only one listener; error_page must preserve POST.
+  status="$(curl -ksS -X POST -H "Host: $SITE_DOMAIN" -o /dev/null -w '%{http_code}' "https://127.0.0.1:$PANEL_HTTPS_PORT/.env")"
+  [[ "$status" == 404 ]]
+  status="$(curl -ksS -X POST -H "Host: $SITE_DOMAIN" -o /dev/null -w '%{http_code}' "https://127.0.0.1:$SUBS_HTTPS_PORT/.git/config?key=swatter-query-canary")"
+  [[ "$status" == 404 ]]
 fi
-read_swatter_jsonl() {
-  docker logs "$NGINX_CONTAINER_ID" 2>/dev/null | grep -F '{"schema":"moskit.http.v1",' || true
+
+read_swatter_logs() {
+  container_stdout="$(docker logs "$NGINX_CONTAINER_ID")"
+  swatter_jsonl="$(grep -F '{"schema":"moskit.http.v1",' <<< "$container_stdout" || true)"
 }
 
-swatter_jsonl="$(read_swatter_jsonl)"
 if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
-  # Non-blocking Docker logging delivers lines asynchronously; wait for the last request.
-  for _ in {1..30}; do
-    grep -Fq '"method":"OTHER"' <<< "$swatter_jsonl" && break
+  expected=(
+    '"uri":"/.env","status":404'
+    '"method":"GET","uri":"/.git/config","status":404'
+    '"uri":"/_other","status":200'
+    '"method":"OTHER","uri":"/_other","status":404'
+    '"method":"POST","uri":"/.env","status":404'
+    '"method":"POST","uri":"/.git/config","status":404'
+  )
+  # Docker nonblocking delivery can lag behind the HTTP response.
+  for _ in {1..50}; do
+    read_swatter_logs
+    missing=()
+    for record in "${expected[@]}"; do
+      grep -Fq "$record" <<< "$swatter_jsonl" || missing+=("$record")
+    done
+    [[ "${#missing[@]}" == 0 ]] && break
     sleep 0.1
-    swatter_jsonl="$(read_swatter_jsonl)"
   done
-  grep -Fq '"uri":"/.env","status":404' <<< "$swatter_jsonl"
-  # Only prefixed requests hit .git/config, so this proves labels match at any depth.
-  grep -Fq '"uri":"/.git/config","status":404' <<< "$swatter_jsonl"
-  grep -Fq '"uri":"/_other","status":200' <<< "$swatter_jsonl"
-  grep -Fq '"method":"OTHER","uri":"/_other","status":404' <<< "$swatter_jsonl"
+  if [[ "${#missing[@]}" != 0 ]]; then
+    printf 'Missing Swatter record: %s\n' "${missing[@]}" >&2
+    exit 1
+  fi
   if grep -Fq 'swatter-token-canary' <<< "$swatter_jsonl" || grep -Fq 'swatter-query-canary' <<< "$swatter_jsonl"; then
     echo 'Swatter log contains a raw path or query' >&2
     exit 1
   fi
 else
+  sleep 0.5
+  read_swatter_logs
   [[ -z "$swatter_jsonl" ]]
 fi
