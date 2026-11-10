@@ -13,6 +13,7 @@
 - [Supported Errors](#supported-errors)
 - [Request Flow](#request-flow)
 - [Quick Start](#quick-start)
+- [Mosquito Swatter](#mosquito-swatter)
 - [Project Structure](#project-structure)
 
 ## Overview
@@ -159,6 +160,32 @@ PANEL_BACKEND_SCHEME=https
 Для страницы подписок location должен проксировать не только `/SUBS_PATH_PREFIX/<subid>`, но и вложенные пути вида `/SUBS_PATH_PREFIX/<subid>/...`, потому что `3x-ui` подгружает ассеты страницы относительно динамического `subid`. Поэтому в шаблоне nginx используется префиксный `location ${SUBS_PATH_PREFIX}/`.
 
 Некорректные `subid`, на которые backend отвечает `400` или `404`, тоже подхватываются `error_page` и показывают кастомную страницу вместо сырого `Error!`.
+
+## Mosquito Swatter
+
+Обычный Compose запускает fallback без событий Swatter. Чтобы включить их, добавьте override:
+
+```sh
+docker compose -f docker-compose.yml -f compose.swatter.yml up -d
+```
+
+Оба TLS-входа пишут в stdout контейнера `3xui-fallback` строки `moskit.http.v1` с временем, адресом соединения, методом, меткой пути и итоговым статусом. `/.env`, `/.git/config`, `/wp-login.php` и `/xmlrpc.php` сохраняются как фиксированные метки даже после внутреннего перехода на страницу ошибки. Остальные пути получают одну метку `/_other`. Из этого журнала можно считать запросы, но нельзя восстановить или посчитать разные неизвестные пути. Query, токены подписок, `Host`, `X-Forwarded-For`, cookies и другие заголовки в этот поток не попадают. Существующие access и error logs работают отдельно со своими форматами.
+
+Override включает неблокирующую доставку и ротацию Docker `local`. При переполнении буфера часть записей может потеряться. Docker хранит эти журналы на уровне контейнера. Если история нужна после его пересоздания, сохраняйте её через доверенный сборщик.
+
+Для разовой проверки под учётной записью с доступом к Docker:
+
+```sh
+docker logs 3xui-fallback | jq -Rrc 'fromjson? | select(.schema == "moskit.http.v1")'
+```
+
+Для постоянного сбора направьте отфильтрованные строки в отдельный ротируемый файл. Добавьте в `sources` Swatter объект с фактическим путём:
+
+```json
+{"id":"fallback_http","type":"file","path":"/var/log/swatter/3xui-fallback.jsonl","parser":"nginx_json","service":"fallback","nft_eligible":false,"trusted_success":false,"options":{"log_visits":true}}
+```
+
+Профиль работает в режиме наблюдения. Используйте сообщения после снятия конверта драйвера Docker.
 
 ## Project Structure
 
