@@ -179,10 +179,21 @@ if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
   status="$(curl -ksS -X SWATTERCANARY -H "Host: $SITE_DOMAIN" -o /dev/null -w '%{http_code}' "https://127.0.0.1:$PANEL_HTTPS_PORT/unknown")"
   [[ "$status" == 404 ]]
 fi
-container_stdout="$(docker logs "$NGINX_CONTAINER_ID")"
-swatter_jsonl="$(grep -F '{"schema":"moskit.http.v1",' <<< "$container_stdout" || true)"
+read_swatter_jsonl() {
+  docker logs "$NGINX_CONTAINER_ID" 2>/dev/null | grep -F '{"schema":"moskit.http.v1",' || true
+}
+
+swatter_jsonl="$(read_swatter_jsonl)"
 if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
+  # Non-blocking Docker logging delivers lines asynchronously; wait for the last request.
+  for _ in {1..30}; do
+    grep -Fq '"method":"OTHER"' <<< "$swatter_jsonl" && break
+    sleep 0.1
+    swatter_jsonl="$(read_swatter_jsonl)"
+  done
   grep -Fq '"uri":"/.env","status":404' <<< "$swatter_jsonl"
+  # Only prefixed requests hit .git/config, so this proves labels match at any depth.
+  grep -Fq '"uri":"/.git/config","status":404' <<< "$swatter_jsonl"
   grep -Fq '"uri":"/_other","status":200' <<< "$swatter_jsonl"
   grep -Fq '"method":"OTHER","uri":"/_other","status":404' <<< "$swatter_jsonl"
   if grep -Fq 'swatter-token-canary' <<< "$swatter_jsonl" || grep -Fq 'swatter-query-canary' <<< "$swatter_jsonl"; then
