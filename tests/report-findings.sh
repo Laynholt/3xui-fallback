@@ -46,6 +46,7 @@ render_config() {
   docker run \
     --rm \
     --network none \
+    -e "MOSQUITO_SWATTER_EVENTS=0" \
     -e "SITE_DOMAIN=$SITE_DOMAIN" \
     -e "PANEL_HTTPS_PORT=$PANEL_HTTPS_PORT" \
     -e "SUBS_HTTPS_PORT=$SUBS_HTTPS_PORT" \
@@ -64,7 +65,7 @@ render_config() {
     -e "SUBS_BACKEND_SSL_VERIFY=on" \
     -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template" \
+    /bin/sh -c "envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template" \
     > "$TMP_DIR/rendered-nginx.conf"
 }
 
@@ -326,6 +327,7 @@ start_nginx() {
     --rm \
     --name "$NGINX_CONTAINER" \
     --network host \
+    -e "MOSQUITO_SWATTER_EVENTS=0" \
     -e "SITE_DOMAIN=$SITE_DOMAIN" \
     -e "PANEL_HTTPS_PORT=$PANEL_HTTPS_PORT" \
     -e "SUBS_HTTPS_PORT=$SUBS_HTTPS_PORT" \
@@ -348,7 +350,7 @@ start_nginx() {
     -v "$TMP_DIR/frontend-privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
     "${ca_volume[@]}" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
+    /bin/sh -c "envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
     >/dev/null || {
       fail "nginx container failed to start"
       return 1
@@ -427,6 +429,39 @@ assert_http_proxy_still_works() {
   fi
 }
 
+assert_panel_hidden_from_denied_client() {
+  local path="$1"
+  local body="$TMP_DIR/body-denied-${path//\//_}"
+  local status
+
+  status="$(curl -ksS -H "Host: $SITE_DOMAIN" -o "$body" -w "%{http_code}" "https://127.0.0.1:$PANEL_HTTPS_PORT$path")"
+  if [[ "$status" != "404" ]] || grep -q "UPSTREAM_HTTP_CANARY" "$body"; then
+    fail "denied client must get a plain 404 for panel path=$path status=$status"
+    cat "$body" >&2
+  fi
+}
+
+assert_panel_slash_redirect_for_allowed_client() {
+  local headers="$TMP_DIR/headers-panel-slash"
+  local status
+
+  status="$(request_headers "$PANEL_HTTPS_PORT" "$SITE_DOMAIN" "$PANEL_PATH_PREFIX" "$headers")"
+  if [[ "$status" != "301" ]] || ! grep -qi "location: ${PANEL_PATH_PREFIX}/" "$headers"; then
+    fail "allowed client must be redirected from $PANEL_PATH_PREFIX to $PANEL_PATH_PREFIX/ status=$status"
+    cat "$headers" >&2
+  fi
+}
+
+assert_panel_accepts_large_upload() {
+  local status
+
+  head -c 2097152 /dev/zero > "$TMP_DIR/upload.bin"
+  status="$(curl -ksS -H "Host: $SITE_DOMAIN" --data-binary @"$TMP_DIR/upload.bin" -o /dev/null -w "%{http_code}" "https://127.0.0.1:$PANEL_HTTPS_PORT$PANEL_PATH_PREFIX/health")"
+  if [[ "$status" == "413" ]]; then
+    fail "panel must accept a 2 MB upload such as an x-ui.db import"
+  fi
+}
+
 assert_untrusted_tls_upstream_blocked() {
   local port="$1"
   local path="$2"
@@ -480,6 +515,14 @@ if wait_for_upstream http && start_nginx http; then
   assert_canonical_redirect "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/redirect"
   assert_http_proxy_still_works "$PANEL_HTTPS_PORT" "$PANEL_PATH_PREFIX/health"
   assert_http_proxy_still_works "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/health"
+  assert_panel_accepts_large_upload
+  assert_panel_slash_redirect_for_allowed_client
+fi
+stop_nginx
+if PANEL_ALLOWED_CIDR=192.0.2.0/24 start_nginx http; then
+  assert_panel_hidden_from_denied_client "$PANEL_PATH_PREFIX"
+  assert_panel_hidden_from_denied_client "$PANEL_PATH_PREFIX/"
+  assert_panel_hidden_from_denied_client "$PANEL_PATH_PREFIX/health"
 fi
 stop_nginx
 stop_upstream

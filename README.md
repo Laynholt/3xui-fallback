@@ -13,6 +13,7 @@
 - [Supported Errors](#supported-errors)
 - [Request Flow](#request-flow)
 - [Quick Start](#quick-start)
+- [Mosquito Swatter](#mosquito-swatter)
 - [Project Structure](#project-structure)
 
 ## Overview
@@ -146,6 +147,8 @@ SUBS_BACKEND_SSL_VERIFY=off
 
 `PANEL_ALLOWED_CIDR` применяется только к panel proxy. Безопасный пример `127.0.0.1/32` оставляет панель доступной только локально. Для админской сети укажите ее CIDR, например `203.0.113.0/24`. Значение `all` открывает панель публично и должно использоваться только если внешний firewall, VPN или другой access gate уже enforced вне этого контейнера.
 
+Клиенту вне `PANEL_ALLOWED_CIDR` панель отвечает обычной `404`, как любой несуществующий путь, а редирект `PANEL_PATH_PREFIX` → `PANEL_PATH_PREFIX/` выдается только разрешенным адресам. Так по ответам нельзя подобрать скрытый путь панели. Панель принимает тело запроса до 50 МБ, чтобы работал импорт `x-ui.db`.
+
 Если panel backend на `127.0.0.1:19000` сам поднимает TLS и отвечает только по `https`, укажите:
 
 ```env
@@ -159,6 +162,70 @@ PANEL_BACKEND_SCHEME=https
 Для страницы подписок location должен проксировать не только `/SUBS_PATH_PREFIX/<subid>`, но и вложенные пути вида `/SUBS_PATH_PREFIX/<subid>/...`, потому что `3x-ui` подгружает ассеты страницы относительно динамического `subid`. Поэтому в шаблоне nginx используется префиксный `location ${SUBS_PATH_PREFIX}/`.
 
 Некорректные `subid`, на которые backend отвечает `400` или `404`, тоже подхватываются `error_page` и показывают кастомную страницу вместо сырого `Error!`.
+
+## Mosquito Swatter
+
+Обычный Compose запускает fallback без событий Swatter. Чтобы включить их, добавьте override:
+
+```sh
+docker compose -f docker-compose.yml -f compose.swatter.yml up -d
+```
+
+Оба TLS-входа пишут в stdout контейнера `3xui-fallback` строки `moskit.http.v1` с временем, адресом соединения, методом, меткой пути и итоговым статусом. `/.env`, `/.git/config`, `/wp-login.php` и `/xmlrpc.php` сохраняются как фиксированные метки даже после внутреннего перехода на страницу ошибки. Метка ставится на любой глубине пути: `/subs/.env` пишется как `/.env`, без префикса. Остальные пути получают одну метку `/_other`. Из этого журнала можно считать запросы, но нельзя восстановить или посчитать разные неизвестные пути. Query, токены подписок, `Host`, `X-Forwarded-For`, cookies и другие заголовки в этот поток не попадают. Существующие access и error logs работают отдельно со своими форматами.
+
+Override включает неблокирующую доставку и ротацию Docker `local`. При переполнении буфера часть записей может потеряться. Docker хранит эти журналы на уровне контейнера. Если история нужна после его пересоздания, сохраняйте её через доверенный сборщик.
+
+Для разовой проверки под учётной записью с доступом к Docker:
+
+```sh
+docker logs 3xui-fallback | jq -Rrc 'fromjson? | select(.schema == "moskit.http.v1")'
+```
+
+Для постоянного сбора копируйте новые строки в файл systemd-сервисом. `docker logs` отдает только сами сообщения, без обертки драйвера Docker, поэтому строки в файле — готовый JSONL:
+
+```ini
+# /etc/systemd/system/3xui-fallback-swatter.service
+[Unit]
+Description=Copy 3xui-fallback Swatter events to a file
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStartPre=/usr/bin/mkdir -p /var/log/swatter
+ExecStart=/bin/sh -c 'docker logs -f --tail 0 3xui-fallback 2>/dev/null | grep --line-buffered -F moskit.http.v1 >> /var/log/swatter/3xui-fallback.jsonl'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+systemctl daemon-reload
+systemctl enable --now 3xui-fallback-swatter
+```
+
+Когда контейнер пересоздается, `docker logs -f` завершается, и systemd перезапускает сервис через 5 секунд. Записи за эти секунды в файл не попадут. Ротация файла через logrotate:
+
+```text
+# /etc/logrotate.d/3xui-fallback-swatter
+/var/log/swatter/3xui-fallback.jsonl {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
+```
+
+Добавьте в `sources` Swatter объект с этим путём:
+
+```json
+{"id":"fallback_http","type":"file","path":"/var/log/swatter/3xui-fallback.jsonl","parser":"nginx_json","service":"fallback","nft_eligible":false,"trusted_success":false,"options":{"log_visits":true}}
+```
+
+Профиль работает в режиме наблюдения (`nft_eligible: false`): Swatter учитывает события, но не блокирует адреса.
 
 ## Project Structure
 
