@@ -1,0 +1,11 @@
+services:
+  nginx:
+    environment:
+      MOSQUITO_SWATTER_EVENTS: "1"
+    logging:
+      driver: local
+      options:
+        mode: non-blocking
+        max-buffer-size: 1m
+        max-size: 10m
+        max-file: "3"

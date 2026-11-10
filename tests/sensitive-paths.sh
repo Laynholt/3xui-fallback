@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
+SWATTER_EVENTS_TEST="${SWATTER_EVENTS_TEST:-0}"
+[[ "$SWATTER_EVENTS_TEST" == 1 ]] || SWATTER_EVENTS_TEST=0
 NGINX_IMAGE="${NGINX_IMAGE:-nginx:1.30.6-alpine3.24-slim@sha256:d9322bba63c6cfc63dc9e86522fd4f95fd4d9020a02b5bced282bbf38b8c3960}"
 SITE_DOMAIN="${SITE_DOMAIN:-example.test}"
 PANEL_ALLOWED_CIDR="${PANEL_ALLOWED_CIDR:-127.0.0.1/32}"
@@ -14,7 +16,9 @@ UPSTREAM_PORT="${TEST_UPSTREAM_PORT:-$((30000 + RANDOM % 1000))}"
 NGINX_CONTAINER="3xui-fallback-sensitive-test-${PANEL_HTTPS_PORT}-${SUBS_HTTPS_PORT}"
 
 cleanup() {
-  docker rm -f "$NGINX_CONTAINER" >/dev/null 2>&1 || true
+  if [[ -n "${NGINX_CONTAINER_ID:-}" ]]; then
+    docker rm -f "$NGINX_CONTAINER_ID" >/dev/null 2>&1 || true
+  fi
   if [[ -n "${UPSTREAM_PID:-}" ]]; then
     kill "$UPSTREAM_PID" >/dev/null 2>&1 || true
     wait "$UPSTREAM_PID" >/dev/null 2>&1 || true
@@ -68,12 +72,17 @@ if [[ "$upstream_ready" != "1" ]]; then
   exit 1
 fi
 
-docker rm -f "$NGINX_CONTAINER" >/dev/null 2>&1 || true
-docker run \
+log_options=()
+if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
+  log_options=(--log-driver local --log-opt mode=non-blocking --log-opt max-buffer-size=1m --log-opt max-size=10m --log-opt max-file=3)
+fi
+NGINX_CONTAINER_ID="$(docker run \
   -d \
   --rm \
   --name "$NGINX_CONTAINER" \
   --network host \
+  "${log_options[@]}" \
+  -e "MOSQUITO_SWATTER_EVENTS=$SWATTER_EVENTS_TEST" \
   -e "SITE_DOMAIN=$SITE_DOMAIN" \
   -e "PANEL_HTTPS_PORT=$PANEL_HTTPS_PORT" \
   -e "SUBS_HTTPS_PORT=$SUBS_HTTPS_PORT" \
@@ -95,8 +104,8 @@ docker run \
   -v "$TMP_DIR/fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
   -v "$TMP_DIR/privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
   "$NGINX_IMAGE" \
-  /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
-  >/dev/null
+  /bin/sh -c "envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
+  )"
 
 nginx_ready=0
 for _ in {1..80}; do
@@ -108,7 +117,7 @@ for _ in {1..80}; do
 done
 if [[ "$nginx_ready" != "1" ]]; then
   echo "nginx test container did not become ready" >&2
-  docker logs "$NGINX_CONTAINER" >&2 || true
+  docker logs "$NGINX_CONTAINER_ID" >&2 || true
   exit 1
 fi
 
@@ -163,3 +172,23 @@ assert_sensitive_path_blocked "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/.git/config"
 
 assert_proxy_still_works "$PANEL_HTTPS_PORT" "$PANEL_PATH_PREFIX/health"
 assert_proxy_still_works "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/health"
+
+if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
+  status="$(fetch_path "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/swatter-token-canary?key=swatter-query-canary" "$TMP_DIR/swatter-response")"
+  [[ "$status" == 200 ]]
+  status="$(curl -ksS -X SWATTERCANARY -H "Host: $SITE_DOMAIN" -o /dev/null -w '%{http_code}' "https://127.0.0.1:$PANEL_HTTPS_PORT/unknown")"
+  [[ "$status" == 404 ]]
+fi
+container_stdout="$(docker logs "$NGINX_CONTAINER_ID")"
+swatter_jsonl="$(grep -F '{"schema":"moskit.http.v1",' <<< "$container_stdout" || true)"
+if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
+  grep -Fq '"uri":"/.env","status":404' <<< "$swatter_jsonl"
+  grep -Fq '"uri":"/_other","status":200' <<< "$swatter_jsonl"
+  grep -Fq '"method":"OTHER","uri":"/_other","status":404' <<< "$swatter_jsonl"
+  if grep -Fq 'swatter-token-canary' <<< "$swatter_jsonl" || grep -Fq 'swatter-query-canary' <<< "$swatter_jsonl"; then
+    echo 'Swatter log contains a raw path or query' >&2
+    exit 1
+  fi
+else
+  [[ -z "$swatter_jsonl" ]]
+fi

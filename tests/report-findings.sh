@@ -46,6 +46,7 @@ render_config() {
   docker run \
     --rm \
     --network none \
+    -e "MOSQUITO_SWATTER_EVENTS=0" \
     -e "SITE_DOMAIN=$SITE_DOMAIN" \
     -e "PANEL_HTTPS_PORT=$PANEL_HTTPS_PORT" \
     -e "SUBS_HTTPS_PORT=$SUBS_HTTPS_PORT" \
@@ -64,7 +65,7 @@ render_config() {
     -e "SUBS_BACKEND_SSL_VERIFY=on" \
     -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template" \
+    /bin/sh -c "envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template" \
     > "$TMP_DIR/rendered-nginx.conf"
 }
 
@@ -326,6 +327,7 @@ start_nginx() {
     --rm \
     --name "$NGINX_CONTAINER" \
     --network host \
+    -e "MOSQUITO_SWATTER_EVENTS=0" \
     -e "SITE_DOMAIN=$SITE_DOMAIN" \
     -e "PANEL_HTTPS_PORT=$PANEL_HTTPS_PORT" \
     -e "SUBS_HTTPS_PORT=$SUBS_HTTPS_PORT" \
@@ -348,7 +350,7 @@ start_nginx() {
     -v "$TMP_DIR/frontend-privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
     "${ca_volume[@]}" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "envsubst '\$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
+    /bin/sh -c "envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
     >/dev/null || {
       fail "nginx container failed to start"
       return 1
