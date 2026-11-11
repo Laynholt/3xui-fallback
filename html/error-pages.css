@@ -21,11 +21,13 @@
 html,
 body {
   min-height: 100%;
+  overflow-x: clip;
 }
 
 body {
   margin: 0;
-  overflow: hidden;
+  min-height: 100svh;
+  padding: 1rem 0;
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
   color: var(--text-main);
   background:
@@ -323,10 +325,12 @@ p {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .blob,
+  .theme-client .blob,
+  .theme-server .blob,
   .grid,
   .noise,
-  .eyebrow::before {
+  .theme-client .eyebrow::before,
+  .theme-server .eyebrow::before {
     animation: none;
   }
 }

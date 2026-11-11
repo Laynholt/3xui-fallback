@@ -2,10 +2,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mkdir -p "$ROOT_DIR/.tmp"
+export TMPDIR="$ROOT_DIR/.tmp" TEMP="$ROOT_DIR/.tmp" TMP="$ROOT_DIR/.tmp"
 TMP_DIR="$(mktemp -d)"
 SWATTER_EVENTS_TEST="${SWATTER_EVENTS_TEST:-0}"
 [[ "$SWATTER_EVENTS_TEST" == 1 ]] || SWATTER_EVENTS_TEST=0
-NGINX_IMAGE="${NGINX_IMAGE:-nginx:1.30.6-alpine3.24-slim@sha256:d9322bba63c6cfc63dc9e86522fd4f95fd4d9020a02b5bced282bbf38b8c3960}"
+NGINX_IMAGE="${NGINX_IMAGE:-nginx:1.30.6-alpine@sha256:583b7f2fce1cdb8da5ad5c39ebd3c33b98b87d493190e548bdee1fa8c619c311}"
 SITE_DOMAIN="${SITE_DOMAIN:-example.test}"
 PANEL_ALLOWED_CIDR="${PANEL_ALLOWED_CIDR:-127.0.0.1/32}"
 PANEL_PATH_PREFIX="${PANEL_PATH_PREFIX:-/panel}"
@@ -99,12 +101,13 @@ NGINX_CONTAINER_ID="$(docker run \
   -e "SUBS_BACKEND_PORT=$UPSTREAM_PORT" \
   -e "SUBS_BACKEND_TLS_NAME=127.0.0.1" \
   -e "SUBS_BACKEND_SSL_VERIFY=off" \
+  -v "$ROOT_DIR/swatter.js:/etc/nginx/swatter.js:ro" \
   -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
   -v "$ROOT_DIR/html:/usr/share/nginx/html:ro" \
   -v "$TMP_DIR/fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
   -v "$TMP_DIR/privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
   "$NGINX_IMAGE" \
-  /bin/sh -c "envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
+  /bin/sh -c "mkdir -p /var/log/swatter; envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
   )"
 
 nginx_ready=0
@@ -178,28 +181,47 @@ if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
   [[ "$status" == 200 ]]
   status="$(curl -ksS -X SWATTERCANARY -H "Host: $SITE_DOMAIN" -o /dev/null -w '%{http_code}' "https://127.0.0.1:$PANEL_HTTPS_PORT/unknown")"
   [[ "$status" == 404 ]]
+  # Each POST marker is sent to only one listener; error_page must preserve POST.
+  status="$(curl -ksS -X POST -H "Host: $SITE_DOMAIN" -o /dev/null -w '%{http_code}' "https://127.0.0.1:$PANEL_HTTPS_PORT/.env")"
+  [[ "$status" == 404 ]]
+  status="$(curl -ksS -X POST -H "Host: $SITE_DOMAIN" -o /dev/null -w '%{http_code}' "https://127.0.0.1:$SUBS_HTTPS_PORT/.git/config?key=swatter-query-canary")"
+  [[ "$status" == 404 ]]
 fi
-read_swatter_jsonl() {
-  docker logs "$NGINX_CONTAINER_ID" 2>/dev/null | grep -F '{"schema":"moskit.http.v1",' || true
+
+read_swatter_logs() {
+  container_stdout="$(docker exec "$NGINX_CONTAINER_ID" cat /var/log/swatter/http.jsonl)"
+  swatter_jsonl="$(grep -F '{"schema":"moskit.http.v1",' <<< "$container_stdout" || true)"
 }
 
-swatter_jsonl="$(read_swatter_jsonl)"
 if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
-  # Non-blocking Docker logging delivers lines asynchronously; wait for the last request.
-  for _ in {1..30}; do
-    grep -Fq '"method":"OTHER"' <<< "$swatter_jsonl" && break
+  expected=(
+    '"uri":"/.env","status":404'
+    '"method":"GET","uri":"/.git/config","status":404'
+    '"uri":"/_subscription","status":200'
+    '"method":"OTHER","uri":"/_other","status":404'
+    '"method":"POST","uri":"/.env","status":404'
+    '"method":"POST","uri":"/.git/config","status":404'
+  )
+  # Docker nonblocking delivery can lag behind the HTTP response.
+  for _ in {1..50}; do
+    read_swatter_logs
+    missing=()
+    for record in "${expected[@]}"; do
+      grep -Fq "$record" <<< "$swatter_jsonl" || missing+=("$record")
+    done
+    [[ "${#missing[@]}" == 0 ]] && break
     sleep 0.1
-    swatter_jsonl="$(read_swatter_jsonl)"
   done
-  grep -Fq '"uri":"/.env","status":404' <<< "$swatter_jsonl"
-  # Only prefixed requests hit .git/config, so this proves labels match at any depth.
-  grep -Fq '"uri":"/.git/config","status":404' <<< "$swatter_jsonl"
-  grep -Fq '"uri":"/_other","status":200' <<< "$swatter_jsonl"
-  grep -Fq '"method":"OTHER","uri":"/_other","status":404' <<< "$swatter_jsonl"
+  if [[ "${#missing[@]}" != 0 ]]; then
+    printf 'Missing Swatter record: %s\n' "${missing[@]}" >&2
+    exit 1
+  fi
   if grep -Fq 'swatter-token-canary' <<< "$swatter_jsonl" || grep -Fq 'swatter-query-canary' <<< "$swatter_jsonl"; then
     echo 'Swatter log contains a raw path or query' >&2
     exit 1
   fi
 else
+  sleep 0.5
+  read_swatter_logs
   [[ -z "$swatter_jsonl" ]]
 fi

@@ -2,8 +2,10 @@
 set -u -o pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mkdir -p "$ROOT_DIR/.tmp"
+export TMPDIR="$ROOT_DIR/.tmp" TEMP="$ROOT_DIR/.tmp" TMP="$ROOT_DIR/.tmp"
 TMP_DIR="$(mktemp -d)"
-NGINX_IMAGE="${NGINX_IMAGE:-nginx:1.30.6-alpine3.24-slim@sha256:d9322bba63c6cfc63dc9e86522fd4f95fd4d9020a02b5bced282bbf38b8c3960}"
+NGINX_IMAGE="${NGINX_IMAGE:-nginx:1.30.6-alpine@sha256:583b7f2fce1cdb8da5ad5c39ebd3c33b98b87d493190e548bdee1fa8c619c311}"
 SITE_DOMAIN="${SITE_DOMAIN:-example.test}"
 ATTACKER_HOST="${ATTACKER_HOST:-attacker.example}"
 PANEL_ALLOWED_CIDR="${PANEL_ALLOWED_CIDR:-127.0.0.1/32}"
@@ -63,9 +65,10 @@ render_config() {
     -e "SUBS_BACKEND_PORT=9444" \
     -e "SUBS_BACKEND_TLS_NAME=subs-backend.test" \
     -e "SUBS_BACKEND_SSL_VERIFY=on" \
+    -v "$ROOT_DIR/swatter.js:/etc/nginx/swatter.js:ro" \
     -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template" \
+    /bin/sh -c "mkdir -p /var/log/swatter; envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template" \
     > "$TMP_DIR/rendered-nginx.conf"
 }
 
@@ -344,13 +347,14 @@ start_nginx() {
     -e "SUBS_BACKEND_PORT=$UPSTREAM_PORT" \
     -e "SUBS_BACKEND_TLS_NAME=$backend_tls_name" \
     -e "SUBS_BACKEND_SSL_VERIFY=$ssl_verify" \
+    -v "$ROOT_DIR/swatter.js:/etc/nginx/swatter.js:ro" \
     -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
     -v "$ROOT_DIR/html:/usr/share/nginx/html:ro" \
     -v "$TMP_DIR/frontend-fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
     -v "$TMP_DIR/frontend-privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
     "${ca_volume[@]}" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
+    /bin/sh -c "mkdir -p /var/log/swatter; envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
     >/dev/null || {
       fail "nginx container failed to start"
       return 1
