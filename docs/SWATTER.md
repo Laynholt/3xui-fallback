@@ -17,7 +17,7 @@ enabled mode.
 ## Producer contract
 
 Schema remains `moskit.http.v1`: `ts`, `peer_ip`, original fixed `method`, safe
-`uri`, final `status`, plus optional `path_hash`, `route_class`, `gate_denied`.
+`uri`, final `status`, configured `host`, plus optional `path_hash`, `route_class`, `gate_denied`.
 The pinned full image includes njs 1.0.2; Nginx loads its actual JS module.
 
 `path_hash` is lowercase SHA-256 of the original query-free path after redaction.
@@ -26,7 +26,13 @@ Unknown `/probe-a` and `/probe-b` have distinct stable hashes while `uri` stays
 the hash. Known panel/subscription prefixes **and their dynamic remainder** are
 replaced with `/_panel` and `/_subscription` before hashing. Sensitive suffixes
 `/.env`, `/.git/config`, `/wp-login.php`, `/xmlrpc.php` retain fixed labels at any
-depth, including percent-encoded dotfiles. No arbitrary raw path, query, Host,
+depth, including percent-encoded dotfiles. Ambiguous paths (dot segments,
+duplicate slashes, malformed/nested escapes, backslashes and control characters)
+collapse to `/_other` before hashing, sacrificing distinct-path counts for those
+spellings. Trailing slashes in configured prefixes do not defeat redaction.
+The host is the normalized, validated configured SITE_DOMAIN DNS name; invalid
+configuration emits an empty host. It never comes from a request header.
+No arbitrary raw path, query, client-supplied Host,
 headers or body is written to the primary event.
 
 `peer_ip` is the TCP transport `$remote_addr`, including IPv6. Incoming X-Real-IP
@@ -35,8 +41,11 @@ There is no HTTP proxy trust configuration here: an upstream proxy that terminat
 the connection becomes the peer. Qualify the actual ingress before relying on
 client attribution. Both TLS entries explicitly listen on IPv4 and IPv6.
 
-Only the panel allow/deny error-page marker with no upstream status sets
+Only the panel allow/deny locations can select the denial error-page marker.
+That server-owned marker with no upstream status sets
 `gate_denied=true`. Upstream 403, ordinary 404 and wrong-Host 444 set false.
+This verdict does not depend on the original path spelling, so normalized panel
+paths still report the real gate denial.
 Denied panel requests still receive the same public 404 page. The internal
 marker itself is not publicly accessible.
 

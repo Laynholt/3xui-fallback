@@ -20,7 +20,7 @@ Fresh local checks passed:
 - Existing baseline before edits: `report-findings.sh`, `sensitive-paths.sh`,
   `SWATTER_EVENTS_TEST=1 sensitive-paths.sh` (exit 0).
 - Same three scripts after image/config change (exit 0).
-- `node --test tests/swatter.test.mjs`: 5 passed. Initial run failed because the
+- `node --test tests/swatter.test.mjs`: 7 passed. Initial run failed because the
   required producer module did not exist.
 - `SWATTER_SOURCE=/swatter-source python3 tests/swatter-runtime.py`: passed with
   actual Compose-rendered startup command, real njs, one event per request,
@@ -39,3 +39,17 @@ VM host network, with the worktree mounted at the same VM path and a task-local
 Docker CLI, ran them unchanged in behavior. All helper/target containers and
 upstream threads from this packet were cleaned; no production collector gains
 Docker privileges. Logs and copied CLI/plugin binaries stay ignored in `.tmp`.
+
+
+Review repair qualification: regressions first failed both Node and actual raw
+TLS/Nginx on `/./private-subs/SECRET` (the prior producer hashed the secret-bearing
+path). Raw dot segments, duplicate slashes, percent-encoded dot segments and
+separators now collapse before hashing; configured trailing prefixes redact
+children. Actual normalized panel denials still set the gate from a server-owned
+marker. Only the gated locations select that marker, while retaining every other
+error-page mapping (location error_page replaces Nginx inheritance). Configured
+host is fixed/validated and cannot be overridden by Host headers. Expanded runtime
+suite: two tests passed, including raw paths on both TLS entries, IPv4 denial,
+trailing-prefix configuration, and the original persistence/cursor checks. The
+three original scripts also passed after repair. No production acceptance claim
+is added by this repair.
