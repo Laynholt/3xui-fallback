@@ -20,8 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Runtime(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
+    def setUp(self):
+        cls = type(self)
         (ROOT / '.tmp').mkdir(exist_ok=True)
         cls.temp = Path(tempfile.mkdtemp(prefix='swatter-', dir=ROOT / '.tmp'))
         cls.logs = cls.temp / 'logs'
@@ -46,11 +46,10 @@ class Runtime(unittest.TestCase):
         cls.upstream = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         cls.thread = threading.Thread(target=cls.upstream.serve_forever, daemon=True)
         cls.thread.start()
-        cls.addClassCleanup(cls.cleanup)
+        self.addCleanup(cls.cleanup)
         subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
                         '-days', '1', '-subj', '/CN=example.test', '-keyout', str(cls.temp / 'key'),
                         '-out', str(cls.temp / 'cert')], check=True, capture_output=True)
-        cls.start('127.0.0.1/32')
 
     @classmethod
     def docker(cls, *args):
@@ -121,6 +120,7 @@ class Runtime(unittest.TestCase):
         return [json.loads(line) for line in (cls.logs / 'http.jsonl').read_text().splitlines()]
 
     def test_normalized_raw_paths(self):
+        self.start('::1/128')
         digest = lambda path: hashlib.sha256(path.encode()).hexdigest()
         for listener in (0, 1):
             for path in ['/./private-subs/SECRET', '/a/../private-subs/SECRET',
@@ -150,6 +150,7 @@ class Runtime(unittest.TestCase):
             self.assertEqual(self.events()[-1]['path_hash'], digest(alias))
 
     def test_end_to_end(self):
+        self.start('127.0.0.1/32')
         for listener in (0, 1):
             for path in ('/probe-a?SECRET_QUERY', '/probe-b', '/probe-a?different',
                          '/private-subs/SECRET_TOKEN', '/hidden-panel/SECRET_PANEL', '/.env'):

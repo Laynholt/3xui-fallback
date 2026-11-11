@@ -173,6 +173,8 @@ docker compose -f docker-compose.yml -f compose.swatter.yml up -d
 
 Оба TLS-входа используют безопасный JSONL в постоянном bind mount, с redaction до SHA-256 и явным признаком отказа panel gate. Подробный контракт, опциональное изменение диагностики, ротация USR1, read-only source и проверки: [Swatter](docs/SWATTER.md).
 
+Если Swatter уже собирал события через `docker logs`, перед обновлением выполните [миграцию сборщика](docs/SWATTER.md#migrating-an-existing-stdout-collector): новая версия пишет события в файл, и прежний bridge перестанет их получать.
+
 ## Project Structure
 
 ```text
@@ -203,4 +205,4 @@ docker compose -f docker-compose.yml -f compose.swatter.yml up -d
 
 ## Dependency maintenance
 
-The Compose image and both regression scripts use the security-rebuilt full nginx 1.30.6 / Alpine 3.24 image, pinned at digest `583b7f2fce1cdb8da5ad5c39ebd3c33b98b87d493190e548bdee1fa8c619c311`. This includes njs 1.0.2 and `ngx_http_js_module.so`; the slim image has no SHA-capable module. Update all three references together after reviewing nginx advisories and rerunning the tests, including actual module loading. For an existing installation, pull the new image before recreating the service: `docker compose pull && docker compose up -d`. Back up your configuration and retain the previous image for rollback.
+The Compose image and both regression scripts use the security-rebuilt full nginx 1.30.6 / Alpine 3.24 image, pinned at digest `583b7f2fce1cdb8da5ad5c39ebd3c33b98b87d493190e548bdee1fa8c619c311`. This includes njs 1.0.2 and `ngx_http_js_module.so`; the slim image has no SHA-capable module. Update all three references together after reviewing nginx advisories and rerunning the tests, including actual module loading. For an existing installation, pull the new image before recreating the service: `docker compose pull && docker compose up -d`. If Swatter is enabled, first follow the [collector migration](docs/SWATTER.md#migrating-an-existing-stdout-collector) and keep `-f docker-compose.yml -f compose.swatter.yml` on both commands. Back up your configuration and retain the previous image for rollback.
