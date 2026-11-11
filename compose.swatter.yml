@@ -2,6 +2,8 @@ services:
   nginx:
     environment:
       MOSQUITO_SWATTER_EVENTS: "1"
+    volumes:
+      - ${SWATTER_LOG_DIR:-./.tmp/swatter-logs}:/var/log/swatter
     logging:
       driver: local
       options:

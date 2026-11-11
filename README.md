@@ -171,61 +171,7 @@ PANEL_BACKEND_SCHEME=https
 docker compose -f docker-compose.yml -f compose.swatter.yml up -d
 ```
 
-Оба TLS-входа пишут в stdout контейнера `3xui-fallback` строки `moskit.http.v1` с временем, адресом соединения, методом, меткой пути и итоговым статусом. `/.env`, `/.git/config`, `/wp-login.php` и `/xmlrpc.php` сохраняются как фиксированные метки даже после внутреннего перехода на страницу ошибки. Метка ставится на любой глубине пути: `/subs/.env` пишется как `/.env`, без префикса. Остальные пути получают одну метку `/_other`. Из этого журнала можно считать запросы, но нельзя восстановить или посчитать разные неизвестные пути. Query, токены подписок, `Host`, `X-Forwarded-For`, cookies и другие заголовки в этот поток не попадают. Существующие access и error logs работают отдельно со своими форматами.
-
-Override включает неблокирующую доставку и ротацию Docker `local`. При переполнении буфера часть записей может потеряться. Docker хранит эти журналы на уровне контейнера. Если история нужна после его пересоздания, сохраняйте её через доверенный сборщик.
-
-Для разовой проверки под учётной записью с доступом к Docker:
-
-```sh
-docker logs 3xui-fallback | jq -Rrc 'fromjson? | select(.schema == "moskit.http.v1")'
-```
-
-Для постоянного сбора копируйте новые строки в файл systemd-сервисом. `docker logs` отдает только сами сообщения, без обертки драйвера Docker, поэтому строки в файле — готовый JSONL:
-
-```ini
-# /etc/systemd/system/3xui-fallback-swatter.service
-[Unit]
-Description=Copy 3xui-fallback Swatter events to a file
-After=docker.service
-Requires=docker.service
-
-[Service]
-ExecStartPre=/usr/bin/mkdir -p /var/log/swatter
-ExecStart=/bin/sh -c 'docker logs -f --tail 0 3xui-fallback 2>/dev/null | grep --line-buffered -F moskit.http.v1 >> /var/log/swatter/3xui-fallback.jsonl'
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```sh
-systemctl daemon-reload
-systemctl enable --now 3xui-fallback-swatter
-```
-
-Когда контейнер пересоздается, `docker logs -f` завершается, и systemd перезапускает сервис через 5 секунд. Записи за эти секунды в файл не попадут. Ротация файла через logrotate:
-
-```text
-# /etc/logrotate.d/3xui-fallback-swatter
-/var/log/swatter/3xui-fallback.jsonl {
-    daily
-    rotate 7
-    compress
-    missingok
-    notifempty
-    copytruncate
-}
-```
-
-Добавьте в `sources` Swatter объект с этим путём:
-
-```json
-{"id":"fallback_http","type":"file","path":"/var/log/swatter/3xui-fallback.jsonl","parser":"nginx_json","service":"fallback","nft_eligible":false,"trusted_success":false,"options":{"log_visits":true}}
-```
-
-Профиль работает в режиме наблюдения (`nft_eligible: false`): Swatter учитывает события, но не блокирует адреса.
+Оба TLS-входа используют безопасный JSONL в постоянном bind mount, с redaction до SHA-256 и явным признаком отказа panel gate. Подробный контракт, опциональное изменение диагностики, ротация USR1, read-only source и проверки: [Swatter](docs/SWATTER.md).
 
 ## Project Structure
 
@@ -257,4 +203,4 @@ systemctl enable --now 3xui-fallback-swatter
 
 ## Dependency maintenance
 
-The Compose image and both regression tests use nginx 1.30.6 on Alpine 3.24, pinned by digest. Update all three references together after reviewing nginx advisories and rerunning the tests. For an existing installation, pull the new image before recreating the service: `docker compose pull && docker compose up -d`. Back up your configuration and retain the previous image for rollback.
+The Compose image and both regression scripts use the security-rebuilt full nginx 1.30.6 / Alpine 3.24 image, pinned at digest `583b7f2fce1cdb8da5ad5c39ebd3c33b98b87d493190e548bdee1fa8c619c311`. This includes njs 1.0.2 and `ngx_http_js_module.so`; the slim image has no SHA-capable module. Update all three references together after reviewing nginx advisories and rerunning the tests, including actual module loading. For an existing installation, pull the new image before recreating the service: `docker compose pull && docker compose up -d`. Back up your configuration and retain the previous image for rollback.
