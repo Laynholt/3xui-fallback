@@ -50,6 +50,8 @@ assert_sensitive_path_blocked "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/.env"
 assert_sensitive_path_blocked "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/.git/config"
 
 assert_proxy_still_works "$PANEL_HTTPS_PORT" "$PANEL_PATH_PREFIX/health"
+# PANEL_HIDE_SPONSORS is unset (old .env): sponsors are proxied.
+assert_proxy_still_works "$PANEL_HTTPS_PORT" "$PANEL_PATH_PREFIX/sponsors"
 assert_proxy_still_works "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/health"
 
 if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
@@ -101,9 +103,10 @@ if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
     exit 1
   fi
   # An unredacted (public) record would carry only the hash of the raw token path.
+  # 3 records: SUBS_PATH_PREFIX health and token, plus the JSON token only when it is classified.
   if [[ -n "$SUBS_JSON_PATH_PREFIX" ]]; then
     raw_hash="$(printf '%s' "$SUBS_JSON_PATH_PREFIX/swatter-token-canary" | sha256sum | cut -d' ' -f1)"
-    if grep -Fq "$raw_hash" <<< "$swatter_jsonl" || [[ "$(grep -cF '"uri":"/_subscription","status":200' <<< "$swatter_jsonl")" -lt 2 ]]; then
+    if grep -Fq "$raw_hash" <<< "$swatter_jsonl" || [[ "$(grep -cF '"uri":"/_subscription","status":200' <<< "$swatter_jsonl")" -lt 3 ]]; then
       echo 'Swatter did not redact the SUBS_JSON_PATH_PREFIX token path' >&2
       exit 1
     fi

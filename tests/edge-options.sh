@@ -120,8 +120,61 @@ sites_absent() {
   [[ "$status" == 404 ]]
 }
 
+# Status of a panel request; response headers go to $2, the body to $3.
+fetch_panel() {
+  local path="$1" headers="$2" body="$3"
+  shift 3
+  curl -ksS -H "Host: $SITE_DOMAIN" -D "$headers" -o "$body" -w '%{http_code}' "$@" \
+    "https://127.0.0.1:$PANEL_HTTPS_PORT$path"
+}
+
+upstream_got() {
+  grep -qxF "$1" "$UPSTREAM_PATHS"
+}
+
+sponsors_hidden() {
+  local status type
+  start_nginx "$NAME" -e PANEL_HIDE_SPONSORS=1 || return 1
+  : > "$UPSTREAM_PATHS"
+  status="$(fetch_panel "$PANEL_PATH_PREFIX/sponsors" "$TMP_DIR/sponsors-headers" "$TMP_DIR/sponsors")"
+  type="$(header_value content-type "$TMP_DIR/sponsors-headers")"
+  if [[ "$status" != 200 || "$type" != application/json ]] \
+    || ! printf '%s' '{"success":true,"obj":[]}' | cmp -s - "$TMP_DIR/sponsors"; then
+    echo "status=$status content-type=$type body=$(head -c 200 "$TMP_DIR/sponsors")" >&2
+    return 1
+  fi
+  # The logo route stays proxied; this also proves the mock records paths.
+  fetch_path "$PANEL_HTTPS_PORT" "$PANEL_PATH_PREFIX/sponsors/logo/x" /dev/null >/dev/null
+  upstream_got "$PANEL_PATH_PREFIX/sponsors/logo/x" && ! upstream_got "$PANEL_PATH_PREFIX/sponsors"
+}
+
+# Review Focus 1: a denied address gets the same 404 as any panel path, never the stub.
+sponsors_hidden_denied() {
+  local status
+  start_nginx "$NAME" -e PANEL_HIDE_SPONSORS=1 -e PANEL_ALLOWED_CIDR=10.8.8.8 || return 1
+  status="$(fetch_path "$PANEL_HTTPS_PORT" "$PANEL_PATH_PREFIX/sponsors" "$TMP_DIR/sponsors-denied")"
+  [[ "$status" == 404 ]] && cmp -s "$ROOT_DIR/html/404.html" "$TMP_DIR/sponsors-denied"
+}
+
+# Anything but 1 is off, and the value never reaches the config verbatim.
+sponsors_flag_normalized() {
+  local status
+  start_nginx "$NAME" -e 'PANEL_HIDE_SPONSORS=1";' || return 1
+  status="$(fetch_path "$PANEL_HTTPS_PORT" "$PANEL_PATH_PREFIX/sponsors" "$TMP_DIR/sponsors-garbage")"
+  [[ "$status" == 200 ]] && grep -q LEAKED_ENV_CANARY "$TMP_DIR/sponsors-garbage"
+}
+
+panel_websocket_still_proxied() {
+  local status
+  start_nginx "$NAME" -e PANEL_HIDE_SPONSORS=1 || return 1
+  status="$(fetch_panel "$PANEL_PATH_PREFIX/ws" "$TMP_DIR/ws-headers" /dev/null \
+    --http1.1 -H 'Upgrade: websocket' -H 'Connection: Upgrade')"
+  [[ "$status" == 200 && "$(header_value x-seen-upgrade "$TMP_DIR/ws-headers")" == websocket ]]
+}
+
 for test_name in cidr_list_allows cidr_list_denies cidr_rejects_injection logs_to_stdout \
-  subs_big_header subs_json_prefix subs_json_prefix_off subs_json_prefix_bad sites_hooks sites_absent; do
+  subs_big_header subs_json_prefix subs_json_prefix_off subs_json_prefix_bad sites_hooks sites_absent \
+  sponsors_hidden sponsors_hidden_denied sponsors_flag_normalized panel_websocket_still_proxied; do
   if "$test_name"; then
     echo "PASS: $test_name"
   else

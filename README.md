@@ -113,6 +113,7 @@ docker compose up -d
 - `PANEL_PATH_PREFIX`
 - `SUBS_PATH_PREFIX`
 - `SUBS_JSON_PATH_PREFIX` (необязательный)
+- `PANEL_HIDE_SPONSORS` (необязательный)
 - `PANEL_BACKEND_HOST`
 - `PANEL_BACKEND_PORT`
 - `PANEL_BACKEND_SCHEME`
@@ -150,6 +151,8 @@ SUBS_BACKEND_SSL_VERIFY=off
 `PANEL_ALLOWED_CIDR` применяется только к panel proxy. Это список через пробел: каждое значение - IPv4/IPv6 адрес, CIDR или `all`, например `PANEL_ALLOWED_CIDR="203.0.113.0/24 198.51.100.7"`. Пустое значение или что-то другое (например, с `;`) - контейнер не запустится и напишет, какое значение плохое. Безопасный пример `127.0.0.1/32` оставляет панель доступной только локально. Для админской сети укажите ее CIDR, например `203.0.113.0/24`. Значение `all` открывает панель публично и должно использоваться только если внешний firewall, VPN или другой access gate уже enforced вне этого контейнера.
 
 Клиенту вне `PANEL_ALLOWED_CIDR` панель отвечает обычной `404`, как любой несуществующий путь, а редирект `PANEL_PATH_PREFIX` → `PANEL_PATH_PREFIX/` выдается только разрешенным адресам. Так по ответам нельзя подобрать скрытый путь панели. Панель принимает тело запроса до 50 МБ, чтобы работал импорт `x-ui.db`.
+
+`PANEL_HIDE_SPONSORS=1` отвечает на `PANEL_PATH_PREFIX/sponsors` пустым списком `{"success":true,"obj":[]}` из `html/sponsors-empty.json`, и 3x-ui не запрашивает список спонсоров с `raw.githubusercontent.com`. Ответ отдается после проверки `PANEL_ALLOWED_CIDR`: запрещенный адрес получает ту же `404`. Любое значение, кроме `1`, выключает опцию; по умолчанию она выключена.
 
 Если panel backend на `127.0.0.1:19000` сам поднимает TLS и отвечает только по `https`, укажите:
 
@@ -194,6 +197,8 @@ location = /hook {
 
 `location` в `sites/subs/` может проксировать на backend подписок через общий файл: задайте `set $subs_forwarded_prefix /prefix;` и `include /etc/nginx/subs-proxy.conf;`.
 
+Внимание: `location` с `=` или `^~` в `sites/subs/` обходит блокировку dotfile-путей (`.env`, `.git`), а `location`, который подключает `subs-proxy.conf`, обязан задать `set $subs_forwarded_prefix`, иначе `X-Forwarded-Prefix` уйдет пустым.
+
 ## Mosquito Swatter
 
 Обычный Compose запускает fallback без событий Swatter. Чтобы включить их, добавьте override:
@@ -233,7 +238,8 @@ docker compose -f docker-compose.yml -f compose.swatter.yml up -d
     ├── 500.html
     ├── 502.html
     ├── 503.html
-    └── 504.html
+    ├── 504.html
+    └── sponsors-empty.json
 ```
 
 ## Dependency maintenance

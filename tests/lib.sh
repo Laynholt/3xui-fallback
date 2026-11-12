@@ -15,6 +15,8 @@ SUBS_JSON_PATH_PREFIX="${SUBS_JSON_PATH_PREFIX:-}"
 PANEL_HTTPS_PORT="${PANEL_HTTPS_PORT:-$((28000 + RANDOM % 1000))}"
 SUBS_HTTPS_PORT="${SUBS_HTTPS_PORT:-$((29000 + RANDOM % 1000))}"
 UPSTREAM_PORT="${TEST_UPSTREAM_PORT:-$((30000 + RANDOM % 1000))}"
+# The mock upstream appends each request path here.
+UPSTREAM_PATHS="$TMP_DIR/upstream-paths"
 NGINX_CONTAINERS=()
 
 stop_nginx() {
@@ -47,16 +49,19 @@ openssl req \
   -addext "subjectAltName=DNS:$SITE_DOMAIN" \
   >/dev/null 2>&1
 
-python3 - "$UPSTREAM_PORT" <<'PY' &
+python3 - "$UPSTREAM_PORT" "$UPSTREAM_PATHS" <<'PY' &
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        with open(sys.argv[2], "a") as paths:
+            paths.write(self.path + "\n")
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
         self.send_header("X-Seen-Forwarded-Prefix", self.headers.get("X-Forwarded-Prefix", ""))
+        self.send_header("X-Seen-Upgrade", self.headers.get("Upgrade", ""))
         if self.path.endswith("/bigheader"):
             self.send_header("Per-App-Proxy-List", "a" * 6000)
         self.end_headers()

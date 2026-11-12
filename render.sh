@@ -6,7 +6,7 @@ set -e
 # envsubst only these, so nginx runtime variables such as $host survive.
 RENDER_VARS='$SITE_DOMAIN
 $MOSQUITO_SWATTER_EVENTS
-$PANEL_HTTPS_PORT $SUBS_HTTPS_PORT
+$PANEL_HTTPS_PORT $SUBS_HTTPS_PORT $PANEL_HIDE_SPONSORS
 $PANEL_PATH_PREFIX $SUBS_PATH_PREFIX $SUBS_JSON_PATH_PREFIX
 $PANEL_BACKEND_SCHEME
 $PANEL_BACKEND_HOST $PANEL_BACKEND_PORT $PANEL_BACKEND_TLS_NAME $PANEL_BACKEND_SSL_VERIFY
@@ -61,6 +61,9 @@ fi
 
 export PANEL_BACKEND_TLS_NAME="${PANEL_BACKEND_TLS_NAME:-$PANEL_BACKEND_HOST}"
 export SUBS_BACKEND_TLS_NAME="${SUBS_BACKEND_TLS_NAME:-$SUBS_BACKEND_HOST}"
+# Anything but 1 is off; the value goes into a quoted map key.
+[ "${PANEL_HIDE_SPONSORS:-}" = 1 ] || PANEL_HIDE_SPONSORS=0
+export PANEL_HIDE_SPONSORS
 if [ "${MOSQUITO_SWATTER_EVENTS:-0}" = 1 ]; then
   export MOSQUITO_SWATTER_EVENTS=1
 else
@@ -69,6 +72,6 @@ fi
 
 envsubst "$RENDER_VARS" < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf
 envsubst "$RENDER_VARS" < /etc/nginx/templates/subs-proxy.conf.template > /etc/nginx/subs-proxy.conf
-nginx -t
+nginx -t -q
 [ "${RENDER_ONLY:-0}" = 1 ] && exit 0
 exec nginx -g 'daemon off;'
