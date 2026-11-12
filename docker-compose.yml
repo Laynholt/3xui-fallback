@@ -13,6 +13,7 @@ services:
       PANEL_ALLOWED_CIDR: "${PANEL_ALLOWED_CIDR}"
       PANEL_PATH_PREFIX: "${PANEL_PATH_PREFIX}"
       SUBS_PATH_PREFIX: "${SUBS_PATH_PREFIX}"
+      SUBS_JSON_PATH_PREFIX: "${SUBS_JSON_PATH_PREFIX:-}"
 
       PANEL_BACKEND_SCHEME: "${PANEL_BACKEND_SCHEME}"
       PANEL_BACKEND_HOST: "${PANEL_BACKEND_HOST}"
@@ -35,6 +36,7 @@ services:
       - ./render.sh:/etc/nginx/render.sh:ro
       - ./swatter.js:/etc/nginx/swatter.js:ro
       - ./nginx.conf:/etc/nginx/templates/nginx.conf.template:ro
+      - ./subs-proxy.conf:/etc/nginx/templates/subs-proxy.conf.template:ro
       - ./html:/usr/share/nginx/html:ro
       - ${SSL_CERT_FULLCHAIN_PATH}:/etc/nginx/certs/fullchain.pem:ro
       - ${SSL_CERT_PRIVKEY_PATH}:/etc/nginx/certs/privkey.pem:ro

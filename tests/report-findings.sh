@@ -71,10 +71,11 @@ render_config() {
     -v "$ROOT_DIR/render.sh:/etc/nginx/render.sh:ro" \
     -v "$ROOT_DIR/swatter.js:/etc/nginx/swatter.js:ro" \
     -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
+    -v "$ROOT_DIR/subs-proxy.conf:/etc/nginx/templates/subs-proxy.conf.template:ro" \
     -v "$TMP_DIR/frontend-fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
     -v "$TMP_DIR/frontend-privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "/bin/sh /etc/nginx/render.sh >/dev/null 2>&1 && sed -e '\\|include /etc/nginx/panel-allow.conf;|{r /etc/nginx/panel-allow.conf' -e 'd;}' /etc/nginx/nginx.conf" \
+    /bin/sh -c "/bin/sh /etc/nginx/render.sh >/dev/null && sed -e '\\|include /etc/nginx/panel-allow.conf;|{r /etc/nginx/panel-allow.conf' -e 'd;}' -e '\\|include /etc/nginx/subs-proxy.conf;|{r /etc/nginx/subs-proxy.conf' -e 'd;}' /etc/nginx/nginx.conf" \
     > "$TMP_DIR/rendered-nginx.conf"
 }
 
@@ -356,6 +357,7 @@ start_nginx() {
     -v "$ROOT_DIR/render.sh:/etc/nginx/render.sh:ro" \
     -v "$ROOT_DIR/swatter.js:/etc/nginx/swatter.js:ro" \
     -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
+    -v "$ROOT_DIR/subs-proxy.conf:/etc/nginx/templates/subs-proxy.conf.template:ro" \
     -v "$ROOT_DIR/html:/usr/share/nginx/html:ro" \
     -v "$TMP_DIR/frontend-fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
     -v "$TMP_DIR/frontend-privkey.pem:/etc/nginx/certs/privkey.pem:ro" \

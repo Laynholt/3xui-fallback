@@ -22,7 +22,9 @@ function event(r) {
     const gate = v.status === '404' && v.uri === '/_swatter_panel_denied.html' && !v.upstream_status;
     const route = gate ? 'panel' : ambiguous ? 'other' :
         under(path, v.swatter_panel_prefix) ? 'panel' :
-        under(path, v.swatter_subs_prefix) ? 'subscription' : 'public';
+        under(path, v.swatter_subs_prefix) ? 'subscription' :
+        // An empty JSON prefix is off; under() would treat it as '/' and match every path.
+        v.swatter_subs_json_prefix && under(path, v.swatter_subs_json_prefix) ? 'subscription' : 'public';
     const sensitive = path.match(/\/(\.env|\.git\/config|wp-login\.php|xmlrpc\.php)$/);
     // Hash redacted routes: subscription IDs and hidden prefixes are never digest inputs.
     const safe = gate ? '/_panel' : ambiguous ? '/_other' : sensitive ? '/' + sensitive[1] :

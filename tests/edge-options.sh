@@ -26,7 +26,7 @@ cidr_list_denies() {
 
 cidr_rejects_injection() {
   local value err
-  for value in "" "1.2.3.4; allow all" "1.2.3.4 ;"; do
+  for value in "" "1.2.3.4; allow all" "1.2.3.4 ;" $'1.2.3.4\nallow all;'; do
     if err="$(render_only -e "PANEL_ALLOWED_CIDR=$value" 2>&1 >/dev/null)"; then
       echo "render accepted PANEL_ALLOWED_CIDR='$value'" >&2
       return 1
@@ -49,7 +49,79 @@ logs_to_stdout() {
   return 1
 }
 
-for test_name in cidr_list_allows cidr_list_denies cidr_rejects_injection logs_to_stdout; do
+# Response headers of a subs request; prints the status code.
+fetch_subs_headers() {
+  curl -ksS -H "Host: $SITE_DOMAIN" -D "$2" -o /dev/null -w '%{http_code}' \
+    "https://127.0.0.1:$SUBS_HTTPS_PORT$1"
+}
+
+header_value() {
+  awk -v name="$1" 'tolower($1) == name ":" { sub(/\r$/, ""); print $2 }' "$2"
+}
+
+subs_big_header() {
+  local status value
+  start_nginx "$NAME" || return 1
+  status="$(fetch_subs_headers "$SUBS_PATH_PREFIX/bigheader" "$TMP_DIR/bigheader")"
+  value="$(header_value per-app-proxy-list "$TMP_DIR/bigheader")"
+  [[ "$status" == 200 && "${#value}" == 6000 ]] || {
+    echo "status=$status Per-App-Proxy-List length=${#value}" >&2
+    return 1
+  }
+  [[ "$(header_value x-seen-forwarded-prefix "$TMP_DIR/bigheader")" == "$SUBS_PATH_PREFIX" ]]
+}
+
+subs_json_prefix() {
+  local status
+  start_nginx "$NAME" -e SUBS_JSON_PATH_PREFIX=/json || return 1
+  status="$(fetch_path "$SUBS_HTTPS_PORT" /json/health "$TMP_DIR/json")"
+  [[ "$status" == 200 ]] && grep -q LEAKED_ENV_CANARY "$TMP_DIR/json" || return 1
+  fetch_subs_headers /json/bigheader "$TMP_DIR/json-headers" >/dev/null
+  [[ "$(header_value x-seen-forwarded-prefix "$TMP_DIR/json-headers")" == /json ]] || return 1
+  status="$(fetch_path "$SUBS_HTTPS_PORT" /json/.env "$TMP_DIR/json-env")"
+  [[ "$status" != 200 ]] && ! grep -q LEAKED_ENV_CANARY "$TMP_DIR/json-env"
+}
+
+subs_json_prefix_off() {
+  local status
+  start_nginx "$NAME" -e SUBS_JSON_PATH_PREFIX= || return 1
+  status="$(fetch_path "$SUBS_HTTPS_PORT" /json/health "$TMP_DIR/json-off")"
+  [[ "$status" == 404 ]] && ! grep -q LEAKED_ENV_CANARY "$TMP_DIR/json-off"
+}
+
+subs_json_prefix_bad() {
+  local value err
+  for value in /json/ json "$SUBS_PATH_PREFIX" "$SUBS_PATH_PREFIX/" $'/json\n/x' '/json;'; do
+    if err="$(render_only -e "SUBS_JSON_PATH_PREFIX=$value" 2>&1 >/dev/null)"; then
+      echo "render accepted SUBS_JSON_PATH_PREFIX='$value'" >&2
+      return 1
+    fi
+    if ! grep -q "bad SUBS_JSON_PATH_PREFIX" <<< "$err"; then
+      echo "no bad SUBS_JSON_PATH_PREFIX error for '$value': $err" >&2
+      return 1
+    fi
+  done
+}
+
+sites_hooks() {
+  local status
+  mkdir -p "$TMP_DIR/sites/http" "$TMP_DIR/sites/subs"
+  echo 'map $uri $edge_t { default 0; /hook 1; }' > "$TMP_DIR/sites/http/t.conf"
+  echo 'location = /hook { return 200 "hook:$edge_t"; }' > "$TMP_DIR/sites/subs/t.conf"
+  start_nginx "$NAME" -v "$TMP_DIR/sites:/etc/nginx/sites:ro" || return 1
+  status="$(fetch_path "$SUBS_HTTPS_PORT" /hook "$TMP_DIR/hook")"
+  [[ "$status" == 200 && "$(cat "$TMP_DIR/hook")" == hook:1 ]]
+}
+
+sites_absent() {
+  local status
+  start_nginx "$NAME" || return 1
+  status="$(fetch_path "$SUBS_HTTPS_PORT" /hook "$TMP_DIR/hook-absent")"
+  [[ "$status" == 404 ]]
+}
+
+for test_name in cidr_list_allows cidr_list_denies cidr_rejects_injection logs_to_stdout \
+  subs_big_header subs_json_prefix subs_json_prefix_off subs_json_prefix_bad sites_hooks sites_absent; do
   if "$test_name"; then
     echo "PASS: $test_name"
   else

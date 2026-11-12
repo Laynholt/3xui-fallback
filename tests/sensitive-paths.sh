@@ -55,6 +55,10 @@ assert_proxy_still_works "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/health"
 if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
   status="$(fetch_path "$SUBS_HTTPS_PORT" "$SUBS_PATH_PREFIX/swatter-token-canary?key=swatter-query-canary" "$TMP_DIR/swatter-response")"
   [[ "$status" == 200 ]]
+  if [[ -n "$SUBS_JSON_PATH_PREFIX" ]]; then
+    status="$(fetch_path "$SUBS_HTTPS_PORT" "$SUBS_JSON_PATH_PREFIX/swatter-token-canary" "$TMP_DIR/swatter-json-response")"
+    [[ "$status" == 200 ]]
+  fi
   status="$(curl -ksS -X SWATTERCANARY -H "Host: $SITE_DOMAIN" -o /dev/null -w '%{http_code}' "https://127.0.0.1:$PANEL_HTTPS_PORT/unknown")"
   [[ "$status" == 404 ]]
   # Each POST marker is sent to only one listener; error_page must preserve POST.
@@ -95,6 +99,14 @@ if [[ "$SWATTER_EVENTS_TEST" == 1 ]]; then
   if grep -Fq 'swatter-token-canary' <<< "$swatter_jsonl" || grep -Fq 'swatter-query-canary' <<< "$swatter_jsonl"; then
     echo 'Swatter log contains a raw path or query' >&2
     exit 1
+  fi
+  # An unredacted (public) record would carry only the hash of the raw token path.
+  if [[ -n "$SUBS_JSON_PATH_PREFIX" ]]; then
+    raw_hash="$(printf '%s' "$SUBS_JSON_PATH_PREFIX/swatter-token-canary" | sha256sum | cut -d' ' -f1)"
+    if grep -Fq "$raw_hash" <<< "$swatter_jsonl" || [[ "$(grep -cF '"uri":"/_subscription","status":200' <<< "$swatter_jsonl")" -lt 2 ]]; then
+      echo 'Swatter did not redact the SUBS_JSON_PATH_PREFIX token path' >&2
+      exit 1
+    fi
   fi
 else
   sleep 0.5

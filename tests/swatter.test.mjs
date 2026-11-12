@@ -43,6 +43,23 @@ test('known secret prefixes and dynamic subscription IDs are removed before hash
     assert.equal(event('/hidden-panel-lookalike').route_class, 'public');
 });
 
+test('json prefix paths are classified as subscription', () => {
+    for (const path of ['/json/SECRET', '/json/SECRET/assets/app.js']) {
+        const record = event(path, {swatter_subs_json_prefix: '/json'});
+        assert.equal(record.route_class, 'subscription');
+        assert.equal(record.uri, '/_subscription');
+        assert.equal(record.path_hash, hash('/_subscription'));
+        assert.doesNotMatch(JSON.stringify(record), /SECRET|json/);
+    }
+    assert.equal(event('/jsonish', {swatter_subs_json_prefix: '/json'}).route_class, 'public');
+});
+
+test('empty json prefix matches nothing', () => {
+    for (const extra of [{swatter_subs_json_prefix: ''}, {}]) {
+        assert.equal(event('/anything', extra).route_class, 'public');
+    }
+});
+
 test('sensitive labels survive secret prefixes and encoded dotfiles', () => {
     for (const path of ['/private-subs/SECRET/.env?key=SECRET', '/%2eenv']) {
         assert.equal(event(path).uri, '/.env');

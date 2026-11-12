@@ -11,6 +11,7 @@ SITE_DOMAIN="${SITE_DOMAIN:-example.test}"
 PANEL_ALLOWED_CIDR="${PANEL_ALLOWED_CIDR:-127.0.0.1/32}"
 PANEL_PATH_PREFIX="${PANEL_PATH_PREFIX:-/panel}"
 SUBS_PATH_PREFIX="${SUBS_PATH_PREFIX:-/subs}"
+SUBS_JSON_PATH_PREFIX="${SUBS_JSON_PATH_PREFIX:-}"
 PANEL_HTTPS_PORT="${PANEL_HTTPS_PORT:-$((28000 + RANDOM % 1000))}"
 SUBS_HTTPS_PORT="${SUBS_HTTPS_PORT:-$((29000 + RANDOM % 1000))}"
 UPSTREAM_PORT="${TEST_UPSTREAM_PORT:-$((30000 + RANDOM % 1000))}"
@@ -55,6 +56,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
+        self.send_header("X-Seen-Forwarded-Prefix", self.headers.get("X-Forwarded-Prefix", ""))
         if self.path.endswith("/bigheader"):
             self.send_header("Per-App-Proxy-List", "a" * 6000)
         self.end_headers()
@@ -89,6 +91,7 @@ NGINX_ARGS=(
   -e "PANEL_ALLOWED_CIDR=$PANEL_ALLOWED_CIDR"
   -e "PANEL_PATH_PREFIX=$PANEL_PATH_PREFIX"
   -e "SUBS_PATH_PREFIX=$SUBS_PATH_PREFIX"
+  -e "SUBS_JSON_PATH_PREFIX=$SUBS_JSON_PATH_PREFIX"
   -e "PANEL_BACKEND_SCHEME=http"
   -e "PANEL_BACKEND_HOST=127.0.0.1"
   -e "PANEL_BACKEND_PORT=$UPSTREAM_PORT"
@@ -102,6 +105,7 @@ NGINX_ARGS=(
   -v "$ROOT_DIR/render.sh:/etc/nginx/render.sh:ro"
   -v "$ROOT_DIR/swatter.js:/etc/nginx/swatter.js:ro"
   -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro"
+  -v "$ROOT_DIR/subs-proxy.conf:/etc/nginx/templates/subs-proxy.conf.template:ro"
   -v "$ROOT_DIR/html:/usr/share/nginx/html:ro"
   -v "$TMP_DIR/fullchain.pem:/etc/nginx/certs/fullchain.pem:ro"
   -v "$TMP_DIR/privkey.pem:/etc/nginx/certs/privkey.pem:ro"

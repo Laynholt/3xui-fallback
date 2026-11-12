@@ -7,8 +7,7 @@ set -e
 RENDER_VARS='$SITE_DOMAIN
 $MOSQUITO_SWATTER_EVENTS
 $PANEL_HTTPS_PORT $SUBS_HTTPS_PORT
-$PANEL_ALLOWED_CIDR
-$PANEL_PATH_PREFIX $SUBS_PATH_PREFIX
+$PANEL_PATH_PREFIX $SUBS_PATH_PREFIX $SUBS_JSON_PATH_PREFIX
 $PANEL_BACKEND_SCHEME
 $PANEL_BACKEND_HOST $PANEL_BACKEND_PORT $PANEL_BACKEND_TLS_NAME $PANEL_BACKEND_SSL_VERIFY
 $SUBS_BACKEND_SCHEME
@@ -35,6 +34,20 @@ if [ -z "$panel_allow" ]; then
 fi
 printf '%s' "$panel_allow" > /etc/nginx/panel-allow.conf
 
+# Optional second subscription prefix (e.g. for JSON subscriptions); empty means off.
+if [ -n "${SUBS_JSON_PATH_PREFIX:-}" ]; then
+  # tr: a newline would let grep match one line and pass the rest into the config.
+  if ! printf '%s' "$SUBS_JSON_PATH_PREFIX" | tr '\n' ' ' | grep -Eqx '/[A-Za-z0-9._~-]+(/[A-Za-z0-9._~-]+)*' \
+    || [ "$SUBS_JSON_PATH_PREFIX" = "$SUBS_PATH_PREFIX" ] || [ "$SUBS_JSON_PATH_PREFIX/" = "$SUBS_PATH_PREFIX" ]; then
+    echo "render.sh: bad SUBS_JSON_PATH_PREFIX: $SUBS_JSON_PATH_PREFIX" >&2
+    exit 1
+  fi
+  printf 'location %s/ {\n    set $subs_forwarded_prefix %s;\n    include /etc/nginx/subs-proxy.conf;\n}\n' \
+    "$SUBS_JSON_PATH_PREFIX" "$SUBS_JSON_PATH_PREFIX" > /etc/nginx/subs-json.conf
+else
+  : > /etc/nginx/subs-json.conf
+fi
+
 mkdir -p /var/log/swatter
 if [ "${MOSQUITO_SWATTER_EVENTS:-0}" = 1 ]; then
   ln -sf /dev/null /var/log/nginx/panel_error.log
@@ -55,6 +68,7 @@ else
 fi
 
 envsubst "$RENDER_VARS" < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf
+envsubst "$RENDER_VARS" < /etc/nginx/templates/subs-proxy.conf.template > /etc/nginx/subs-proxy.conf
 nginx -t
 [ "${RENDER_ONLY:-0}" = 1 ] && exit 0
 exec nginx -g 'daemon off;'
