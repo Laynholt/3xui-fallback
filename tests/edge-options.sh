@@ -132,6 +132,9 @@ upstream_got() {
   grep -qxF "$1" "$UPSTREAM_PATHS"
 }
 
+# 3x-ui v3.11.0 SponsorList shape; the UI reads msg.obj.sponsors.
+SPONSORS_STUB='{"success":true,"obj":{"sponsors":[]}}'
+
 sponsors_hidden() {
   local status type
   start_nginx "$NAME" -e PANEL_HIDE_SPONSORS=1 || return 1
@@ -139,7 +142,7 @@ sponsors_hidden() {
   status="$(fetch_panel "$PANEL_PATH_PREFIX/sponsors" "$TMP_DIR/sponsors-headers" "$TMP_DIR/sponsors")"
   type="$(header_value content-type "$TMP_DIR/sponsors-headers")"
   if [[ "$status" != 200 || "$type" != application/json ]] \
-    || ! printf '%s' '{"success":true,"obj":[]}' | cmp -s - "$TMP_DIR/sponsors"; then
+    || ! printf '%s' "$SPONSORS_STUB" | cmp -s - "$TMP_DIR/sponsors"; then
     echo "status=$status content-type=$type body=$(head -c 200 "$TMP_DIR/sponsors")" >&2
     return 1
   fi
@@ -172,9 +175,19 @@ panel_websocket_still_proxied() {
   [[ "$status" == 200 && "$(header_value x-seen-upgrade "$TMP_DIR/ws-headers")" == websocket ]]
 }
 
+# A long prefix must not overflow the map hash bucket, whether the flag is on or off.
+sponsors_long_prefix() {
+  local prefix status
+  prefix="/$(printf 'p%.0s' {1..119})"
+  start_nginx "$NAME" -e "PANEL_PATH_PREFIX=$prefix" -e PANEL_HIDE_SPONSORS=0 || return 1
+  start_nginx "$NAME" -e "PANEL_PATH_PREFIX=$prefix" -e PANEL_HIDE_SPONSORS=1 || return 1
+  status="$(fetch_path "$PANEL_HTTPS_PORT" "$prefix/sponsors" "$TMP_DIR/sponsors-long")"
+  [[ "$status" == 200 ]] && printf '%s' "$SPONSORS_STUB" | cmp -s - "$TMP_DIR/sponsors-long"
+}
+
 for test_name in cidr_list_allows cidr_list_denies cidr_rejects_injection logs_to_stdout \
   subs_big_header subs_json_prefix subs_json_prefix_off subs_json_prefix_bad sites_hooks sites_absent \
-  sponsors_hidden sponsors_hidden_denied sponsors_flag_normalized panel_websocket_still_proxied; do
+  sponsors_hidden sponsors_hidden_denied sponsors_flag_normalized panel_websocket_still_proxied   sponsors_long_prefix; do
   if "$test_name"; then
     echo "PASS: $test_name"
   else

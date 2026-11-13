@@ -152,7 +152,7 @@ SUBS_BACKEND_SSL_VERIFY=off
 
 Клиенту вне `PANEL_ALLOWED_CIDR` панель отвечает обычной `404`, как любой несуществующий путь, а редирект `PANEL_PATH_PREFIX` → `PANEL_PATH_PREFIX/` выдается только разрешенным адресам. Так по ответам нельзя подобрать скрытый путь панели. Панель принимает тело запроса до 50 МБ, чтобы работал импорт `x-ui.db`.
 
-`PANEL_HIDE_SPONSORS=1` отвечает на `PANEL_PATH_PREFIX/sponsors` пустым списком `{"success":true,"obj":[]}` из `html/sponsors-empty.json`, и 3x-ui не запрашивает список спонсоров с `raw.githubusercontent.com`. Ответ отдается после проверки `PANEL_ALLOWED_CIDR`: запрещенный адрес получает ту же `404`. Любое значение, кроме `1`, выключает опцию; по умолчанию она выключена.
+`PANEL_HIDE_SPONSORS=1` отвечает на `PANEL_PATH_PREFIX/sponsors` пустым списком `{"success":true,"obj":{"sponsors":[]}}` из `html/sponsors-empty.json`, и 3x-ui не запрашивает список спонсоров с `raw.githubusercontent.com`. Ответ отдается после проверки `PANEL_ALLOWED_CIDR`: запрещенный адрес получает ту же `404`. Любое значение, кроме `1`, выключает опцию; по умолчанию она выключена.
 
 Если panel backend на `127.0.0.1:19000` сам поднимает TLS и отвечает только по `https`, укажите:
 
