@@ -79,7 +79,9 @@ class Runtime(unittest.TestCase):
         args = ['run', '-d', '--name', cls.container, '--network', 'host']
         for key, value in values.items():
             args += ['-e', key + '=' + value]
-        for source, dest in [(ROOT / 'nginx.conf', '/etc/nginx/templates/nginx.conf.template'),
+        for source, dest in [(ROOT / 'render.sh', '/etc/nginx/render.sh'),
+                             (ROOT / 'nginx.conf', '/etc/nginx/templates/nginx.conf.template'),
+                             (ROOT / 'subs-proxy.conf', '/etc/nginx/templates/subs-proxy.conf.template'),
                              (ROOT / 'swatter.js', '/etc/nginx/swatter.js'),
                              (ROOT / 'html', '/usr/share/nginx/html'),
                              (cls.temp / 'cert', '/etc/nginx/certs/fullchain.pem'),
