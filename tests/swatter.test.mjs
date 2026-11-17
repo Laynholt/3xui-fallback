@@ -15,13 +15,14 @@ const request = (uri, extra = {}) => ({variables: {
 const event = (uri, extra) => JSON.parse(audit.event(request(uri, extra)));
 const hash = path => createHash('sha256').update(path).digest('hex');
 
-test('original unknown paths remain distinct across error redirects, with no query', () => {
-    const a = event('/probe-a?token=SECRET');
+test('unknown public paths collapse before hashing, including opaque secrets', () => {
+    const a = event('/probe-a/SECRET-CANARY?token=SECRET');
     const b = event('/probe-b');
     assert.equal(a.uri, '/_other');
-    assert.equal(a.path_hash, hash('/probe-a'));
+    assert.equal(a.path_hash, hash('/_other'));
     assert.equal(event('/probe-a?changed=query').path_hash, a.path_hash);
-    assert.notEqual(a.path_hash, b.path_hash);
+    assert.equal(a.path_hash, b.path_hash);
+    assert.notEqual(a.path_hash, hash('/probe-a/SECRET-CANARY'));
     assert.equal(a.route_class, 'public');
     assert.equal(a.gate_denied, false);
     assert.equal(a.peer_ip, '2001:db8::1');
