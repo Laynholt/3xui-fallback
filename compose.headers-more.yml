@@ -1,0 +1,15 @@
+services:
+  nginx:
+    volumes:
+      - type: bind
+        source: ${NGINX_HEADERS_MORE_DIR:?set the absolute candidate directory}/nginx.conf
+        target: /etc/nginx/templates/nginx.conf.template
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${NGINX_HEADERS_MORE_DIR:?set the absolute candidate directory}/ngx_http_headers_more_filter_module.so
+        target: /etc/nginx/ngx_http_headers_more_filter_module.so
+        read_only: true
+        bind:
+          create_host_path: false
