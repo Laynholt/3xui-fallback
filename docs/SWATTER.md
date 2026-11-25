@@ -93,10 +93,10 @@ Schema remains `moskit.http.v1`: `ts`, `peer_ip`, original fixed `method`, safe
 `uri`, final `status`, configured `host`, plus optional `path_hash`, `route_class`, `gate_denied`.
 The pinned full image includes njs 1.0.2; Nginx loads its actual JS module.
 
-`path_hash` is lowercase SHA-256 of the original query-free path after redaction.
-Unknown `/probe-a` and `/probe-b` have distinct stable hashes while `uri` stays
-`/_other`, even after the same 404 internal redirect. Query changes do not change
-the hash. Known panel/subscription prefixes **and their dynamic remainder** are
+`path_hash` is lowercase SHA-256 of the fixed path class after redaction.
+Unknown public paths share the `/_other` hash, so opaque secrets in those paths
+never become digest inputs. Query changes do not change the hash.
+Known panel/subscription prefixes **and their dynamic remainder** are
 replaced with `/_panel` and `/_subscription` before hashing. Sensitive suffixes
 `/.env`, `/.git/config`, `/wp-login.php`, `/xmlrpc.php` retain fixed labels at any
 depth, including percent-encoded dotfiles. Ambiguous paths (dot segments,
@@ -105,6 +105,9 @@ collapse to `/_other` before hashing, sacrificing distinct-path counts for those
 spellings. Trailing slashes in configured prefixes do not defeat redaction.
 The host is the normalized, validated configured SITE_DOMAIN DNS name; invalid
 configuration emits an empty host. It never comes from a request header.
+This privacy policy does not count distinct unknown public paths. Historical
+qualification fixtures retain their original hashes; new runtime checks expect
+the fixed class hash.
 No arbitrary raw path, query, client-supplied Host,
 headers or body is written to the primary event.
 

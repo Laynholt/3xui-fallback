@@ -28,7 +28,7 @@ function event(r) {
     const sensitive = path.match(/\/(\.env|\.git\/config|wp-login\.php|xmlrpc\.php)$/);
     // Hash redacted routes: subscription IDs and hidden prefixes are never digest inputs.
     const safe = gate ? '/_panel' : ambiguous ? '/_other' : sensitive ? '/' + sensitive[1] :
-        route === 'panel' ? '/_panel' : route === 'subscription' ? '/_subscription' : path;
+        route === 'panel' ? '/_panel' : route === 'subscription' ? '/_subscription' : '/_other';
     const method = (v.request || '').match(/^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT) /);
     const status = /^[1-5][0-9][0-9]$/.test(v.status) ? Number(v.status) : 0;
     return JSON.stringify({schema: 'moskit.http.v1', ts: Number(v.msec),

@@ -177,7 +177,8 @@ class Runtime(unittest.TestCase):
         self.assertEqual(records[-1]['peer_ip'], '::1')
         for offset in (1, 7):
             self.assertEqual(records[offset]['path_hash'], records[offset + 2]['path_hash'])
-            self.assertNotEqual(records[offset]['path_hash'], records[offset + 1]['path_hash'])
+            self.assertEqual(records[offset]['path_hash'], records[offset + 1]['path_hash'])
+            self.assertEqual(records[offset]['path_hash'], hashlib.sha256(b'/_other').hexdigest())
         self.assertNotIn('SECRET', json.dumps(records))
         self.assertNotIn('hidden-panel', json.dumps(records))
         self.assertNotIn('private-subs', json.dumps(records))
