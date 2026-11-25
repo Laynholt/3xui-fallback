@@ -13,6 +13,7 @@
 - [Supported Errors](#supported-errors)
 - [Request Flow](#request-flow)
 - [Quick Start](#quick-start)
+- [Host extensions](#host-extensions)
 - [Mosquito Swatter](#mosquito-swatter)
 - [Project Structure](#project-structure)
 
@@ -111,6 +112,8 @@ docker compose up -d
 - `PANEL_ALLOWED_CIDR`
 - `PANEL_PATH_PREFIX`
 - `SUBS_PATH_PREFIX`
+- `SUBS_JSON_PATH_PREFIX` (необязательный)
+- `PANEL_HIDE_SPONSORS` (необязательный)
 - `PANEL_BACKEND_HOST`
 - `PANEL_BACKEND_PORT`
 - `PANEL_BACKEND_SCHEME`
@@ -145,9 +148,11 @@ PANEL_BACKEND_SSL_VERIFY=off
 SUBS_BACKEND_SSL_VERIFY=off
 ```
 
-`PANEL_ALLOWED_CIDR` применяется только к panel proxy. Безопасный пример `127.0.0.1/32` оставляет панель доступной только локально. Для админской сети укажите ее CIDR, например `203.0.113.0/24`. Значение `all` открывает панель публично и должно использоваться только если внешний firewall, VPN или другой access gate уже enforced вне этого контейнера.
+`PANEL_ALLOWED_CIDR` применяется только к panel proxy. Это список через пробел: каждое значение - IPv4/IPv6 адрес, CIDR или `all`, например `PANEL_ALLOWED_CIDR="203.0.113.0/24 198.51.100.7"`. Пустое значение или что-то другое (например, с `;`) - контейнер не запустится и напишет, какое значение плохое. Безопасный пример `127.0.0.1/32` оставляет панель доступной только локально. Для админской сети укажите ее CIDR, например `203.0.113.0/24`. Значение `all` открывает панель публично и должно использоваться только если внешний firewall, VPN или другой access gate уже enforced вне этого контейнера.
 
 Клиенту вне `PANEL_ALLOWED_CIDR` панель отвечает обычной `404`, как любой несуществующий путь, а редирект `PANEL_PATH_PREFIX` → `PANEL_PATH_PREFIX/` выдается только разрешенным адресам. Так по ответам нельзя подобрать скрытый путь панели. Панель принимает тело запроса до 50 МБ, чтобы работал импорт `x-ui.db`.
+
+`PANEL_HIDE_SPONSORS=1` отвечает на `PANEL_PATH_PREFIX/sponsors` пустым списком `{"success":true,"obj":{"sponsors":[]}}` из `html/sponsors-empty.json`, и 3x-ui не запрашивает список спонсоров с `raw.githubusercontent.com`. Ответ отдается после проверки `PANEL_ALLOWED_CIDR`: запрещенный адрес получает ту же `404`. Любое значение, кроме `1`, выключает опцию; по умолчанию она выключена.
 
 Если panel backend на `127.0.0.1:19000` сам поднимает TLS и отвечает только по `https`, укажите:
 
@@ -163,6 +168,37 @@ PANEL_BACKEND_SCHEME=https
 
 Некорректные `subid`, на которые backend отвечает `400` или `404`, тоже подхватываются `error_page` и показывают кастомную страницу вместо сырого `Error!`.
 
+Общие proxy-директивы подписок лежат в `subs-proxy.conf`, буферы заголовков ответа - 16k: 3x-ui отдает длинные заголовки вроде `Per-App-Proxy-List`, на которых стандартный буфер дает `502`. `SUBS_JSON_PATH_PREFIX` (например, `/json`) добавляет второй префикс подписок с тем же backend; пустое значение его выключает. В событиях Swatter пути под ним скрываются так же, как под `SUBS_PATH_PREFIX`.
+
+## Host extensions
+
+Локальные дополнения конфигурации без правки `nginx.conf`. nginx подключает файлы, если они есть:
+
+- `/etc/nginx/sites/http/*.conf` - контекст `http` (например, `map`), до первого `server`;
+- `/etc/nginx/sites/subs/*.conf` - контекст `server` подписок (например, дополнительные `location`).
+
+Без каталога `sites/` конфигурация такая же, как раньше. `sites/` и `docker-compose.override.yml` в `.gitignore`, монтирование делается только в override:
+
+```yaml
+# docker-compose.override.yml
+services:
+  nginx:
+    volumes:
+      - ./sites:/etc/nginx/sites:ro
+```
+
+Пример `sites/subs/hook.conf`:
+
+```nginx
+location = /hook {
+    return 200 "ok";
+}
+```
+
+`location` в `sites/subs/` может проксировать на backend подписок через общий файл: задайте `set $subs_forwarded_prefix /prefix;` и `include /etc/nginx/subs-proxy.conf;`.
+
+Внимание: `location` с `=` или `^~` в `sites/subs/` обходит блокировку dotfile-путей (`.env`, `.git`), а `location`, который подключает `subs-proxy.conf`, обязан задать `set $subs_forwarded_prefix`, иначе `X-Forwarded-Prefix` уйдет пустым.
+
 ## Mosquito Swatter
 
 Обычный Compose запускает fallback без событий Swatter. Чтобы включить их, добавьте override:
@@ -173,6 +209,8 @@ docker compose -f docker-compose.yml -f compose.swatter.yml up -d
 
 Оба TLS-входа используют безопасный JSONL в постоянном bind mount, с redaction до SHA-256 и явным признаком отказа panel gate. Подробный контракт, опциональное изменение диагностики, ротация USR1, read-only source и проверки: [Swatter](docs/SWATTER.md).
 
+Если Swatter уже собирал события через `docker logs`, перед обновлением выполните [миграцию сборщика](docs/SWATTER.md#migrating-an-existing-stdout-collector): новая версия пишет события в файл, и прежний bridge перестанет их получать.
+
 ## Project Structure
 
 ```text
@@ -182,6 +220,8 @@ docker compose -f docker-compose.yml -f compose.swatter.yml up -d
 ├── README.md
 ├── docker-compose.yml
 ├── nginx.conf
+├── render.sh
+├── subs-proxy.conf
 ├── docs/
 │   └── screenshots/
 │       ├── 401.png
@@ -198,9 +238,10 @@ docker compose -f docker-compose.yml -f compose.swatter.yml up -d
     ├── 500.html
     ├── 502.html
     ├── 503.html
-    └── 504.html
+    ├── 504.html
+    └── sponsors-empty.json
 ```
 
 ## Dependency maintenance
 
-The Compose image and both regression scripts use the full nginx 1.30.7 Alpine image, pinned at digest `bef154735288bc38d99fac41ae63730684bcc661503673a04a0f9bc526ba8598`. This includes njs 1.0.2 and `ngx_http_js_module.so`; the slim image has no SHA-capable module. Update all three references together after reviewing nginx advisories and rerunning the tests, including actual module loading. For an existing installation, pull the new image before recreating the service: `docker compose pull && docker compose up -d`. Back up your configuration and retain the previous image for rollback.
+The Compose image and regression test harnesses use the full nginx 1.30.7 Alpine image, pinned at digest `bef154735288bc38d99fac41ae63730684bcc661503673a04a0f9bc526ba8598`. This includes njs 1.0.2 and `ngx_http_js_module.so`; the slim image has no SHA-capable module. Update the Compose and test image pins together after reviewing nginx advisories and rerunning the tests, including actual module loading. For an existing installation, pull the new image before recreating the service: `docker compose pull && docker compose up -d`. If Swatter is enabled, first follow the [collector migration](docs/SWATTER.md#migrating-an-existing-stdout-collector) and keep `-f docker-compose.yml -f compose.swatter.yml` on both commands. Back up your configuration and retain the previous image for rollback.

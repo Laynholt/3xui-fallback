@@ -65,10 +65,17 @@ render_config() {
     -e "SUBS_BACKEND_PORT=9444" \
     -e "SUBS_BACKEND_TLS_NAME=subs-backend.test" \
     -e "SUBS_BACKEND_SSL_VERIFY=on" \
+    --add-host panel-backend.test:127.0.0.1 \
+    --add-host subs-backend.test:127.0.0.1 \
+    -e "RENDER_ONLY=1" \
+    -v "$ROOT_DIR/render.sh:/etc/nginx/render.sh:ro" \
     -v "$ROOT_DIR/swatter.js:/etc/nginx/swatter.js:ro" \
     -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
+    -v "$ROOT_DIR/subs-proxy.conf:/etc/nginx/templates/subs-proxy.conf.template:ro" \
+    -v "$TMP_DIR/frontend-fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
+    -v "$TMP_DIR/frontend-privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "mkdir -p /var/log/swatter; envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template" \
+    /bin/sh -c "/bin/sh /etc/nginx/render.sh >/dev/null && sed -e '\\|include /etc/nginx/panel-allow.conf;|{r /etc/nginx/panel-allow.conf' -e 'd;}' -e '\\|include /etc/nginx/subs-proxy.conf;|{r /etc/nginx/subs-proxy.conf' -e 'd;}' /etc/nginx/nginx.conf" \
     > "$TMP_DIR/rendered-nginx.conf"
 }
 
@@ -82,11 +89,11 @@ assert_deployment_image_pinned() {
 }
 
 assert_tls_name_defaults_to_backend_host() {
-  if ! grep -q 'PANEL_BACKEND_TLS_NAME.*PANEL_BACKEND_HOST' "$ROOT_DIR/docker-compose.yml"; then
-    fail "docker-compose.yml must default PANEL_BACKEND_TLS_NAME to PANEL_BACKEND_HOST for existing .env files"
+  if ! grep -q 'PANEL_BACKEND_TLS_NAME.*PANEL_BACKEND_HOST' "$ROOT_DIR/render.sh"; then
+    fail "render.sh must default PANEL_BACKEND_TLS_NAME to PANEL_BACKEND_HOST for existing .env files"
   fi
-  if ! grep -q 'SUBS_BACKEND_TLS_NAME.*SUBS_BACKEND_HOST' "$ROOT_DIR/docker-compose.yml"; then
-    fail "docker-compose.yml must default SUBS_BACKEND_TLS_NAME to SUBS_BACKEND_HOST for existing .env files"
+  if ! grep -q 'SUBS_BACKEND_TLS_NAME.*SUBS_BACKEND_HOST' "$ROOT_DIR/render.sh"; then
+    fail "render.sh must default SUBS_BACKEND_TLS_NAME to SUBS_BACKEND_HOST for existing .env files"
   fi
 }
 
@@ -347,14 +354,16 @@ start_nginx() {
     -e "SUBS_BACKEND_PORT=$UPSTREAM_PORT" \
     -e "SUBS_BACKEND_TLS_NAME=$backend_tls_name" \
     -e "SUBS_BACKEND_SSL_VERIFY=$ssl_verify" \
+    -v "$ROOT_DIR/render.sh:/etc/nginx/render.sh:ro" \
     -v "$ROOT_DIR/swatter.js:/etc/nginx/swatter.js:ro" \
     -v "$ROOT_DIR/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro" \
+    -v "$ROOT_DIR/subs-proxy.conf:/etc/nginx/templates/subs-proxy.conf.template:ro" \
     -v "$ROOT_DIR/html:/usr/share/nginx/html:ro" \
     -v "$TMP_DIR/frontend-fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
     -v "$TMP_DIR/frontend-privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
     "${ca_volume[@]}" \
     "$NGINX_IMAGE" \
-    /bin/sh -c "mkdir -p /var/log/swatter; envsubst '\$MOSQUITO_SWATTER_EVENTS \$SITE_DOMAIN \$PANEL_HTTPS_PORT \$SUBS_HTTPS_PORT \$PANEL_ALLOWED_CIDR \$PANEL_PATH_PREFIX \$SUBS_PATH_PREFIX \$PANEL_BACKEND_SCHEME \$PANEL_BACKEND_HOST \$PANEL_BACKEND_PORT \$PANEL_BACKEND_TLS_NAME \$PANEL_BACKEND_SSL_VERIFY \$SUBS_BACKEND_SCHEME \$SUBS_BACKEND_HOST \$SUBS_BACKEND_PORT \$SUBS_BACKEND_TLS_NAME \$SUBS_BACKEND_SSL_VERIFY' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'" \
+    /bin/sh /etc/nginx/render.sh \
     >/dev/null || {
       fail "nginx container failed to start"
       return 1

@@ -8,3 +8,5 @@ Thumbs.db
 
 .tmp/
 .worktree/
+sites/
+docker-compose.override.yml
